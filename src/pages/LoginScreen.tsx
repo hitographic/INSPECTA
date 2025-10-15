@@ -44,15 +44,16 @@ export default function LoginScreen() {
     <div className="container">
       <div className="card">
         <div className="header" style={{ textAlign: 'center' }}>
-  <img 
-    src="/ISS.svg" alt="ISS Track Logo" 
-    style={{
-      width: '250px',      // ubah sesuai ukuran yang kamu mau
-      height: 'auto',
-      marginBottom: '1rem',
-    }}
-  />
-</div>
+          <img
+            src={`${import.meta.env.BASE_URL}ISS.svg`}
+            alt="ISS Track Logo"
+            style={{
+              width: '250px',
+              height: 'auto',
+              marginBottom: '1rem',
+            }}
+          />
+        </div>
 
 
         <form onSubmit={handleLogin}>

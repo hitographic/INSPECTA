@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="refresh" content="0;url=/INSPECTA/">
+  <script>
+    // Redirect to base URL and preserve the path
+    const path = window.location.pathname;
+    const base = '/INSPECTA/';
+
+    // If we're at a subpath, redirect to index with hash routing
+    if (path !== base && !path.endsWith('.html')) {
+      const newPath = path.replace(base, '');
+      window.location.replace(base + '#' + newPath);
+    } else {
+      window.location.replace(base);
+    }
+  </script>
+  <title>Redirecting...</title>
+</head>
+<body>
+  <p>Redirecting...</p>
+</body>
+</html>
