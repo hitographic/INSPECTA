@@ -5,13 +5,23 @@
   <title>Redirecting...</title>
   <script>
     (function() {
-      var pathSegmentsToKeep = 1;
       var l = window.location;
+      var base = '/INSPECTA/';
 
+      // Get the path after /INSPECTA/
+      var path = l.pathname;
+      var subPath = '';
+
+      if (path.indexOf(base) === 0) {
+        subPath = path.substring(base.length);
+      } else {
+        subPath = path.replace(/^\//, '');
+      }
+
+      // Redirect to base with query string encoding
       l.replace(
         l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
-        l.pathname.split('/').slice(0, 1 + pathSegmentsToKeep).join('/') + '/?/' +
-        l.pathname.slice(1).split('/').slice(pathSegmentsToKeep).join('/').replace(/&/g, '~and~') +
+        base + '?/' + subPath +
         (l.search ? '&' + l.search.slice(1).replace(/&/g, '~and~') : '') +
         l.hash
       );
