@@ -2,8 +2,19 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
+import { registerSW } from 'virtual:pwa-register'
 import App from './App'
 import './index.css'
+
+// Register service worker
+registerSW({
+  onNeedRefresh() {
+    console.log('[PWA] New content available, please refresh.')
+  },
+  onOfflineReady() {
+    console.log('[PWA] App ready to work offline')
+  },
+})
 
 const rootElement = document.getElementById('root');
 
