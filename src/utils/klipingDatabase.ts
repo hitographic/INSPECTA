@@ -76,6 +76,8 @@ export const getKlipingRecords = async (filters?: {
   shift?: string;
 }): Promise<KlipingRecord[]> => {
   try {
+    console.log('[KLIPING] Fetching records with filters:', filters);
+
     let query = supabase
       .from('kliping_records')
       .select('*')
@@ -83,38 +85,53 @@ export const getKlipingRecords = async (filters?: {
 
     if (filters?.plant) {
       query = query.eq('plant', filters.plant);
+      console.log('[KLIPING] Filtering by plant:', filters.plant);
     }
 
     if (filters?.startDate) {
       query = query.gte('tanggal', filters.startDate);
+      console.log('[KLIPING] Filtering by startDate:', filters.startDate);
     }
 
     if (filters?.endDate) {
       query = query.lte('tanggal', filters.endDate);
+      console.log('[KLIPING] Filtering by endDate:', filters.endDate);
     }
 
     if (filters?.line) {
       query = query.eq('line', filters.line);
+      console.log('[KLIPING] Filtering by line:', filters.line);
     }
 
     if (filters?.regu) {
       query = query.eq('regu', filters.regu);
+      console.log('[KLIPING] Filtering by regu:', filters.regu);
     }
 
     if (filters?.shift) {
       query = query.eq('shift', filters.shift);
+      console.log('[KLIPING] Filtering by shift:', filters.shift);
     }
 
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error fetching kliping records:', error);
+      console.error('[KLIPING] Error fetching records:', error);
+      console.error('[KLIPING] Error details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
       return [];
     }
 
+    console.log('[KLIPING] Successfully fetched records:', data?.length || 0);
+    console.log('[KLIPING] Sample data:', data?.[0]);
+
     return data || [];
   } catch (error) {
-    console.error('Error in getKlipingRecords:', error);
+    console.error('[KLIPING] Exception in getKlipingRecords:', error);
     return [];
   }
 };
