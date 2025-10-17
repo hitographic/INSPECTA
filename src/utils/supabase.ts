@@ -1,7 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
+import { ENV_CONFIG } from '../config/env';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = ENV_CONFIG.SUPABASE_URL;
+const supabaseAnonKey = ENV_CONFIG.SUPABASE_ANON_KEY;
 
 console.log('[SUPABASE] URL:', supabaseUrl);
 console.log('[SUPABASE] Anon Key:', supabaseAnonKey ? 'Present' : 'Missing');
@@ -9,9 +10,9 @@ console.log('[SUPABASE] Full URL check:', supabaseUrl?.includes('supabase.co') ?
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('[SUPABASE] Missing environment variables');
-  console.error('[SUPABASE] VITE_SUPABASE_URL:', supabaseUrl);
-  console.error('[SUPABASE] VITE_SUPABASE_ANON_KEY:', supabaseAnonKey ? 'Present' : 'Missing');
-  throw new Error('Missing Supabase environment variables. Please check your .env file.');
+  console.error('[SUPABASE] SUPABASE_URL:', supabaseUrl);
+  console.error('[SUPABASE] SUPABASE_ANON_KEY:', supabaseAnonKey ? 'Present' : 'Missing');
+  throw new Error('Missing Supabase environment variables. Please check your configuration.');
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
