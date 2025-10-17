@@ -373,6 +373,30 @@ class AuthService {
       return [];
     }
   }
+
+  async getUserPermissions(username: string): Promise<string[]> {
+    try {
+      const { data: user } = await supabase
+        .from('app_users')
+        .select('id')
+        .eq('username', username)
+        .maybeSingle();
+
+      if (!user) return [];
+
+      const { data: permissions } = await supabase
+        .from('user_permissions')
+        .select('permission')
+        .eq('user_id', user.id);
+
+      return permissions?.map(p => p.permission) || [];
+    } catch (error) {
+      console.error('Failed to get user permissions:', error);
+      return [];
+    }
+  }
 }
 
 export const authService = new AuthService();
+
+export const getUserPermissions = (username: string) => authService.getUserPermissions(username);

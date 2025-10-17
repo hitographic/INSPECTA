@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Plus, FileDown, Trash2 } from 'lucide-react';
+import { ArrowLeft, Plus, FileDown, Trash2, Eye, X } from 'lucide-react';
 import { KlipingRecord } from '../types/database';
-import { getKlipingRecords, getKlipingRecordsWithPhotos, REGU_OPTIONS, SHIFT_OPTIONS } from '../utils/klipingDatabase';
+import { getKlipingRecords, getKlipingRecordsWithPhotos, getKlipingRecordPhotos, REGU_OPTIONS, SHIFT_OPTIONS, FOTO_TYPES } from '../utils/klipingDatabase';
 import { exportKlipingToExcel, exportKlipingToPDF, exportAllKlipingToZip } from '../utils/klipingExport';
 import { supabase } from '../utils/supabase';
 import { PLANTS } from '../constants/AppConstants';
+import { getUserPermissions } from '../utils/authService';
 
 interface LocationState {
   plant: string;
@@ -23,23 +24,39 @@ const KlipingRecordsScreen: React.FC = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedLine, setSelectedLine] = useState('');
+  const [selectedRegu, setSelectedRegu] = useState('');
+  const [selectedShift, setSelectedShift] = useState('');
 
   const [showCreatePopup, setShowCreatePopup] = useState(false);
   const [tempLine, setTempLine] = useState('');
   const [tempRegu, setTempRegu] = useState('');
   const [tempShift, setTempShift] = useState('');
 
+  const [photoPreviewModal, setPhotoPreviewModal] = useState(false);
+  const [previewPhotos, setPreviewPhotos] = useState<{ [key: string]: string }>({});
+  const [loadingPhotos, setLoadingPhotos] = useState(false);
+  const [canPreviewPhotos, setCanPreviewPhotos] = useState(false);
+
   const lines = PLANTS[plant as keyof typeof PLANTS]?.map(num => `Line ${num}`) || [];
 
   useEffect(() => {
     loadRecords();
+    checkPermissions();
   }, [plant]);
 
   useEffect(() => {
     console.log('[KLIPING SCREEN] Applying filters, records count:', records.length);
-    console.log('[KLIPING SCREEN] Filters:', { startDate, endDate, selectedLine });
+    console.log('[KLIPING SCREEN] Filters:', { startDate, endDate, selectedLine, selectedRegu, selectedShift });
     applyFilters();
-  }, [records, startDate, endDate, selectedLine]);
+  }, [records, startDate, endDate, selectedLine, selectedRegu, selectedShift]);
+
+  const checkPermissions = async () => {
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+    if (currentUser.username) {
+      const permissions = await getUserPermissions(currentUser.username);
+      setCanPreviewPhotos(permissions.includes('preview_kliping_photos'));
+    }
+  };
 
   const groupRecordsBySession = (records: KlipingRecord[]) => {
     const grouped: { [key: string]: KlipingRecord[] } = {};
@@ -116,6 +133,18 @@ const KlipingRecordsScreen: React.FC = () => {
       console.log('[KLIPING SCREEN] Applying line filter:', selectedLine);
       filtered = filtered.filter(r => r.line === selectedLine);
       console.log('[KLIPING SCREEN] After line filter:', filtered.length);
+    }
+
+    if (selectedRegu) {
+      console.log('[KLIPING SCREEN] Applying regu filter:', selectedRegu);
+      filtered = filtered.filter(r => r.regu === selectedRegu);
+      console.log('[KLIPING SCREEN] After regu filter:', filtered.length);
+    }
+
+    if (selectedShift) {
+      console.log('[KLIPING SCREEN] Applying shift filter:', selectedShift);
+      filtered = filtered.filter(r => r.shift === selectedShift);
+      console.log('[KLIPING SCREEN] After shift filter:', filtered.length);
     }
 
     console.log('[KLIPING SCREEN] Final filtered count:', filtered.length);
@@ -225,6 +254,41 @@ const KlipingRecordsScreen: React.FC = () => {
       } else {
         alert('Export PDF gagal!');
       }
+    }
+  };
+
+  const handlePreviewPhotos = async (record: KlipingRecord, pengamatanKe: string, mesin: string) => {
+    if (!canPreviewPhotos) {
+      alert('Anda tidak memiliki akses untuk preview foto');
+      return;
+    }
+
+    setLoadingPhotos(true);
+    setPhotoPreviewModal(true);
+
+    try {
+      const photos = await getKlipingRecordPhotos({
+        plant: record.plant,
+        tanggal: record.tanggal,
+        line: record.line,
+        regu: record.regu,
+        shift: record.shift,
+        Pengamatan_ke: pengamatanKe,
+        Mesin: mesin
+      });
+
+      if (photos) {
+        setPreviewPhotos(photos as { [key: string]: string });
+      } else {
+        setPreviewPhotos({});
+        alert('Tidak ada foto untuk mesin ini');
+      }
+    } catch (error) {
+      console.error('[PREVIEW] Error loading photos:', error);
+      alert('Gagal memuat foto');
+      setPreviewPhotos({});
+    } finally {
+      setLoadingPhotos(false);
     }
   };
 
@@ -471,6 +535,50 @@ const KlipingRecordsScreen: React.FC = () => {
             </select>
           </div>
 
+          <div style={{ marginBottom: '24px' }}>
+            <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#4a5568', marginBottom: '8px' }}>
+              Filter by Regu
+            </label>
+            <select
+              value={selectedRegu}
+              onChange={(e) => setSelectedRegu(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '12px',
+                borderRadius: '12px',
+                border: '2px solid #d1fae5',
+                fontSize: '14px',
+              }}
+            >
+              <option value="">Semua Regu</option>
+              {REGU_OPTIONS.map(regu => (
+                <option key={regu} value={regu}>{regu}</option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ marginBottom: '24px' }}>
+            <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#4a5568', marginBottom: '8px' }}>
+              Filter by Shift
+            </label>
+            <select
+              value={selectedShift}
+              onChange={(e) => setSelectedShift(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '12px',
+                borderRadius: '12px',
+                border: '2px solid #d1fae5',
+                fontSize: '14px',
+              }}
+            >
+              <option value="">Semua Shift</option>
+              {SHIFT_OPTIONS.map(shift => (
+                <option key={shift} value={shift}>{shift}</option>
+              ))}
+            </select>
+          </div>
+
           <div style={{ display: 'flex', gap: '12px', marginBottom: '32px' }}>
             <button
               onClick={handleExportAllExcel}
@@ -569,9 +677,36 @@ const KlipingRecordsScreen: React.FC = () => {
                             return Object.entries(pengamatanMap)
                               .sort(([a], [b]) => parseInt(a) - parseInt(b))
                               .map(([pengNum, data]) => (
-                                <p key={pengNum} style={{ marginBottom: '4px' }}>
-                                  Pengamatan {pengNum}: Mesin {data.mesins.sort((a, b) => parseInt(a) - parseInt(b)).join(',')} - {data.flavor}
-                                </p>
+                                <div key={pengNum} style={{ marginBottom: '12px', padding: '12px', background: 'rgba(255,255,255,0.5)', borderRadius: '8px' }}>
+                                  <p style={{ marginBottom: '8px', fontWeight: '600' }}>
+                                    Pengamatan {pengNum}: {data.flavor}
+                                  </p>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                    {data.mesins.sort((a, b) => parseInt(a) - parseInt(b)).map(mesinNum => (
+                                      <button
+                                        key={mesinNum}
+                                        onClick={() => canPreviewPhotos && handlePreviewPhotos(firstRecord, pengNum, `Mesin ${mesinNum}`)}
+                                        disabled={!canPreviewPhotos}
+                                        style={{
+                                          padding: '6px 12px',
+                                          background: canPreviewPhotos ? '#10b981' : '#9ca3af',
+                                          color: 'white',
+                                          border: 'none',
+                                          borderRadius: '6px',
+                                          fontSize: '12px',
+                                          fontWeight: '500',
+                                          cursor: canPreviewPhotos ? 'pointer' : 'not-allowed',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '4px'
+                                        }}
+                                      >
+                                        <Eye size={14} />
+                                        Mesin {mesinNum}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
                               ));
                           })()}
                         </div>
@@ -839,6 +974,130 @@ const KlipingRecordsScreen: React.FC = () => {
               >
                 OK
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {photoPreviewModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.8)',
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px',
+          overflow: 'auto'
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: '20px',
+            width: '100%',
+            maxWidth: '900px',
+            maxHeight: '90vh',
+            overflow: 'auto',
+            position: 'relative'
+          }}>
+            <div style={{
+              position: 'sticky',
+              top: 0,
+              background: 'white',
+              padding: '20px',
+              borderBottom: '2px solid #e5e7eb',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              zIndex: 10
+            }}>
+              <h2 style={{ fontSize: '22px', fontWeight: '700', color: '#065f46', margin: 0 }}>
+                Preview Foto
+              </h2>
+              <button
+                onClick={() => setPhotoPreviewModal(false)}
+                style={{
+                  background: '#ef4444',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '40px',
+                  height: '40px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  fontSize: '20px',
+                  fontWeight: 'bold'
+                }}
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div style={{ padding: '20px' }}>
+              {loadingPhotos ? (
+                <div style={{ textAlign: 'center', padding: '60px', color: '#10b981' }}>
+                  <p style={{ fontSize: '18px', fontWeight: '600' }}>⏳ Loading foto...</p>
+                </div>
+              ) : Object.keys(previewPhotos).length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '60px', color: '#6b7280' }}>
+                  <p style={{ fontSize: '16px' }}>Tidak ada foto</p>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+                  {FOTO_TYPES.map(fotoType => {
+                    const fotoData = previewPhotos[fotoType.key];
+                    if (!fotoData) return null;
+
+                    return (
+                      <div key={fotoType.key} style={{
+                        background: '#f9fafb',
+                        borderRadius: '12px',
+                        padding: '16px',
+                        border: '2px solid #e5e7eb'
+                      }}>
+                        <h3 style={{
+                          fontSize: '14px',
+                          fontWeight: '600',
+                          color: '#374151',
+                          marginBottom: '12px'
+                        }}>
+                          {fotoType.label}
+                        </h3>
+                        <div style={{
+                          width: '100%',
+                          aspectRatio: '4/3',
+                          borderRadius: '8px',
+                          overflow: 'hidden',
+                          background: '#e5e7eb'
+                        }}>
+                          <img
+                            src={fotoData}
+                            alt={fotoType.label}
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover'
+                            }}
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = 'none';
+                              const parent = target.parentElement;
+                              if (parent) {
+                                parent.innerHTML = '<div style="display:flex;align-items:center;justify-center;height:100%;color:#9ca3af;font-size:14px;">Failed to load</div>';
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
