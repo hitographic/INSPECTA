@@ -37,6 +37,9 @@ const KlipingRecordsScreen: React.FC = () => {
   const [loadingPhotos, setLoadingPhotos] = useState(false);
   const [canPreviewPhotos, setCanPreviewPhotos] = useState(false);
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
   const lines = PLANTS[plant as keyof typeof PLANTS]?.map(num => `Line ${num}`) || [];
 
   useEffect(() => {
@@ -48,6 +51,7 @@ const KlipingRecordsScreen: React.FC = () => {
     console.log('[KLIPING SCREEN] Applying filters, records count:', records.length);
     console.log('[KLIPING SCREEN] Filters:', { startDate, endDate, selectedLine, selectedRegu, selectedShift });
     applyFilters();
+    setCurrentPage(1);
   }, [records, startDate, endDate, selectedLine, selectedRegu, selectedShift]);
 
   const checkPermissions = async () => {
@@ -75,6 +79,16 @@ const KlipingRecordsScreen: React.FC = () => {
       }
       return 0;
     }));
+  };
+
+  const getPaginatedGroups = (groups: KlipingRecord[][]) => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return groups.slice(startIndex, endIndex);
+  };
+
+  const getTotalPages = (groups: KlipingRecord[][]) => {
+    return Math.ceil(groups.length / itemsPerPage);
   };
 
   const loadRecords = async () => {
@@ -633,8 +647,16 @@ const KlipingRecordsScreen: React.FC = () => {
               Tidak ada data kliping
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {groupRecordsBySession(filteredRecords).map((group, groupIdx) => {
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {(() => {
+                  const allGroups = groupRecordsBySession(filteredRecords);
+                  const paginatedGroups = getPaginatedGroups(allGroups);
+                  const totalPages = getTotalPages(allGroups);
+
+                  return (
+                    <>
+                      {paginatedGroups.map((group, groupIdx) => {
                 const firstRecord = group[0];
                 return (
                   <div
@@ -829,7 +851,105 @@ const KlipingRecordsScreen: React.FC = () => {
                   </div>
                 );
               })}
-            </div>
+
+                      {totalPages > 1 && (
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          gap: '8px',
+                          marginTop: '32px',
+                          paddingTop: '24px',
+                          borderTop: '2px solid #d1fae5'
+                        }}>
+                          <button
+                            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                            disabled={currentPage === 1}
+                            style={{
+                              padding: '10px 16px',
+                              background: currentPage === 1 ? '#e5e7eb' : '#10b981',
+                              color: currentPage === 1 ? '#9ca3af' : 'white',
+                              border: 'none',
+                              borderRadius: '8px',
+                              fontSize: '14px',
+                              fontWeight: '600',
+                              cursor: currentPage === 1 ? 'not-allowed' : 'pointer'
+                            }}
+                          >
+                            Previous
+                          </button>
+
+                          <div style={{
+                            display: 'flex',
+                            gap: '4px',
+                            alignItems: 'center'
+                          }}>
+                            {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => {
+                              if (
+                                page === 1 ||
+                                page === totalPages ||
+                                (page >= currentPage - 1 && page <= currentPage + 1)
+                              ) {
+                                return (
+                                  <button
+                                    key={page}
+                                    onClick={() => setCurrentPage(page)}
+                                    style={{
+                                      padding: '8px 12px',
+                                      background: page === currentPage ? '#10b981' : 'white',
+                                      color: page === currentPage ? 'white' : '#065f46',
+                                      border: `2px solid ${page === currentPage ? '#10b981' : '#d1fae5'}`,
+                                      borderRadius: '8px',
+                                      fontSize: '14px',
+                                      fontWeight: '600',
+                                      cursor: 'pointer',
+                                      minWidth: '40px'
+                                    }}
+                                  >
+                                    {page}
+                                  </button>
+                                );
+                              } else if (
+                                page === currentPage - 2 ||
+                                page === currentPage + 2
+                              ) {
+                                return <span key={page} style={{ padding: '0 4px', color: '#6b7280' }}>...</span>;
+                              }
+                              return null;
+                            })}
+                          </div>
+
+                          <button
+                            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                            disabled={currentPage === totalPages}
+                            style={{
+                              padding: '10px 16px',
+                              background: currentPage === totalPages ? '#e5e7eb' : '#10b981',
+                              color: currentPage === totalPages ? '#9ca3af' : 'white',
+                              border: 'none',
+                              borderRadius: '8px',
+                              fontSize: '14px',
+                              fontWeight: '600',
+                              cursor: currentPage === totalPages ? 'not-allowed' : 'pointer'
+                            }}
+                          >
+                            Next
+                          </button>
+
+                          <div style={{
+                            marginLeft: '16px',
+                            fontSize: '14px',
+                            color: '#6b7280'
+                          }}>
+                            Page {currentPage} of {totalPages} ({allGroups.length} total records)
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </>
           )}
         </div>
       </div>

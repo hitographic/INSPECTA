@@ -2,6 +2,9 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+const isGitHubPages = process.env.VITE_DEPLOY_TARGET === 'github-pages';
+const baseUrl = isGitHubPages ? '/INSPECTA/' : '/';
+
 export default defineConfig({
   plugins: [
     react(),
@@ -15,18 +18,18 @@ export default defineConfig({
         theme_color: '#8B5CF6',
         background_color: '#ffffff',
         display: 'standalone',
-        scope: '/INSPECTA/',
-        start_url: '/INSPECTA/',
+        scope: baseUrl,
+        start_url: baseUrl,
         orientation: 'portrait',
         icons: [
           {
-            src: '/INSPECTA/ISS favicon icon.svg',
+            src: `${baseUrl}ISS favicon icon.svg`,
             sizes: '192x192 512x512',
             type: 'image/svg+xml',
             purpose: 'any'
           },
           {
-            src: '/INSPECTA/ISS favicon icon.svg',
+            src: `${baseUrl}ISS favicon icon.svg`,
             sizes: '192x192 512x512',
             type: 'image/svg+xml',
             purpose: 'maskable'
@@ -54,7 +57,7 @@ export default defineConfig({
       }
     })
   ],
-  base: '/INSPECTA/',
+  base: baseUrl,
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
