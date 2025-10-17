@@ -80,7 +80,7 @@ export const getKlipingRecords = async (filters?: {
 
     let query = supabase
       .from('kliping_records')
-      .select('*')
+      .select('id, id_unik, plant, tanggal, line, regu, shift, Flavor, Pengamatan_ke, Mesin, created_by, created_at, updated_at, is_complete, pengamatan_timestamp')
       .order('created_at', { ascending: false });
 
     if (filters?.plant) {

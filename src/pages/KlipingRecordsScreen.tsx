@@ -303,28 +303,6 @@ const KlipingRecordsScreen: React.FC = () => {
     });
   };
 
-  const testDirectQuery = async () => {
-    try {
-      console.log('[TEST] Testing direct Supabase query...');
-      const { data, error } = await supabase
-        .from('kliping_records')
-        .select('*')
-        .eq('plant', plant)
-        .limit(5);
-
-      console.log('[TEST] Direct query result:', { data, error });
-      console.log('[TEST] Record count:', data?.length);
-
-      if (error) {
-        alert('Query Error: ' + error.message);
-      } else {
-        alert(`Direct query success! Found ${data?.length} records (limited to 5)`);
-      }
-    } catch (err) {
-      console.error('[TEST] Exception:', err);
-      alert('Exception: ' + err);
-    }
-  };
 
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', padding: '20px' }}>
@@ -377,28 +355,6 @@ const KlipingRecordsScreen: React.FC = () => {
           <p style={{ fontSize: '18px', color: '#718096', marginBottom: '32px', textAlign: 'left', fontWeight: '600' }}>
             {plant}
           </p>
-
-          <button
-            onClick={testDirectQuery}
-            style={{
-              width: '100%',
-              padding: '14px',
-              background: '#eff6ff',
-              border: '2px solid #bfdbfe',
-              borderRadius: '12px',
-              color: '#1e40af',
-              fontSize: '15px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              marginBottom: '16px',
-            }}
-          >
-            🔍 Test Direct Query (Debug)
-          </button>
 
           {canDelete() && (
             <button
