@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Plus, FileDown, Trash2 } from 'lucide-react';
 import { KlipingRecord } from '../types/database';
-import { getKlipingRecords, REGU_OPTIONS, SHIFT_OPTIONS } from '../utils/klipingDatabase';
+import { getKlipingRecords, getKlipingRecordsWithPhotos, REGU_OPTIONS, SHIFT_OPTIONS } from '../utils/klipingDatabase';
 import { exportKlipingToExcel, exportKlipingToPDF, exportAllKlipingToZip } from '../utils/klipingExport';
 import { supabase } from '../utils/supabase';
 import { PLANTS } from '../constants/AppConstants';
@@ -166,17 +166,26 @@ const KlipingRecordsScreen: React.FC = () => {
       return;
     }
 
-    const sessions = groupRecordsBySession(filteredRecords);
+    alert('Memuat foto untuk export... Mohon tunggu');
+
+    const recordsWithPhotos = await getKlipingRecordsWithPhotos({
+      plant,
+      startDate,
+      endDate,
+      line: selectedLine || undefined
+    });
+
+    const sessions = groupRecordsBySession(recordsWithPhotos);
 
     if (sessions.length > 1) {
-      const success = await exportAllKlipingToZip(filteredRecords, 'excel');
+      const success = await exportAllKlipingToZip(recordsWithPhotos, 'excel');
       if (success) {
         alert(`Export berhasil! ${sessions.length} file Excel dalam ZIP`);
       } else {
         alert('Export gagal!');
       }
     } else {
-      const success = await exportKlipingToExcel(filteredRecords);
+      const success = await exportKlipingToExcel(recordsWithPhotos);
       if (success) {
         alert('Export Excel berhasil!');
       } else {
@@ -191,17 +200,26 @@ const KlipingRecordsScreen: React.FC = () => {
       return;
     }
 
-    const sessions = groupRecordsBySession(filteredRecords);
+    alert('Memuat foto untuk export... Mohon tunggu');
+
+    const recordsWithPhotos = await getKlipingRecordsWithPhotos({
+      plant,
+      startDate,
+      endDate,
+      line: selectedLine || undefined
+    });
+
+    const sessions = groupRecordsBySession(recordsWithPhotos);
 
     if (sessions.length > 1) {
-      const success = await exportAllKlipingToZip(filteredRecords, 'pdf');
+      const success = await exportAllKlipingToZip(recordsWithPhotos, 'pdf');
       if (success) {
         alert(`Export berhasil! ${sessions.length} file PDF dalam ZIP`);
       } else {
         alert('Export gagal!');
       }
     } else {
-      const success = await exportKlipingToPDF(filteredRecords);
+      const success = await exportKlipingToPDF(recordsWithPhotos);
       if (success) {
         alert('Export PDF berhasil!');
       } else {
@@ -211,14 +229,18 @@ const KlipingRecordsScreen: React.FC = () => {
   };
 
   const handleExportRecordExcel = async (record: KlipingRecord) => {
-    const relatedRecords = filteredRecords.filter(r =>
-      r.tanggal === record.tanggal &&
-      r.line === record.line &&
-      r.regu === record.regu &&
-      r.shift === record.shift
-    );
+    alert('Memuat foto untuk export... Mohon tunggu');
 
-    const success = await exportKlipingToExcel(relatedRecords);
+    const recordsWithPhotos = await getKlipingRecordsWithPhotos({
+      plant,
+      startDate: record.tanggal,
+      endDate: record.tanggal,
+      line: record.line,
+      regu: record.regu,
+      shift: record.shift
+    });
+
+    const success = await exportKlipingToExcel(recordsWithPhotos);
     if (success) {
       alert('Export Excel berhasil!');
     } else {
@@ -227,14 +249,18 @@ const KlipingRecordsScreen: React.FC = () => {
   };
 
   const handleExportRecordPDF = async (record: KlipingRecord) => {
-    const relatedRecords = filteredRecords.filter(r =>
-      r.tanggal === record.tanggal &&
-      r.line === record.line &&
-      r.regu === record.regu &&
-      r.shift === record.shift
-    );
+    alert('Memuat foto untuk export... Mohon tunggu');
 
-    const success = await exportKlipingToPDF(relatedRecords);
+    const recordsWithPhotos = await getKlipingRecordsWithPhotos({
+      plant,
+      startDate: record.tanggal,
+      endDate: record.tanggal,
+      line: record.line,
+      regu: record.regu,
+      shift: record.shift
+    });
+
+    const success = await exportKlipingToPDF(recordsWithPhotos);
     if (success) {
       alert('Export PDF berhasil!');
     } else {

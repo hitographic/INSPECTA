@@ -6,6 +6,7 @@ import {
   insertKlipingRecord,
   getKlipingRecords,
   deleteKlipingRecordsByIdUnik,
+  getKlipingRecordPhotos,
   MESIN_OPTIONS,
   FOTO_TYPES
 } from '../utils/klipingDatabase';
@@ -66,6 +67,11 @@ const CreateKlipingScreen: React.FC = () => {
   const [cameraError, setCameraError] = useState('');
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
+  const [photoPreviewModal, setPhotoPreviewModal] = useState(false);
+  const [previewPhotos, setPreviewPhotos] = useState<{ [key: string]: string }>({});
+  const [loadingPhotos, setLoadingPhotos] = useState(false);
+  const [mesinPhotoCounts, setMesinPhotoCounts] = useState<{ [key: string]: number }>({});
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const cameraManager = useRef(new CameraManager());
   const uploadRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
@@ -75,6 +81,18 @@ const CreateKlipingScreen: React.FC = () => {
       loadExistingSession();
     }
   }, []);
+
+  useEffect(() => {
+    Object.keys(mesinFotos).forEach(mesin => {
+      updatePhotoCount(mesin, mesinFotos[mesin]);
+    });
+  }, [mesinFotos]);
+
+  useEffect(() => {
+    if (selectedMesin && pengamatan && !mesinFotos[selectedMesin]) {
+      fetchExistingPhotosForMesin(selectedMesin);
+    }
+  }, [selectedMesin]);
 
   const loadExistingSession = async () => {
     const records = await getKlipingRecords({
@@ -115,13 +133,9 @@ const CreateKlipingScreen: React.FC = () => {
         pengamatanMap[key].mesins.push(mes);
       }
 
-      const fotos: { [fotoKey: string]: string } = {};
-      FOTO_TYPES.forEach(ft => {
-        const val = (record as any)[ft.key];
-        if (val) fotos[ft.key] = val;
-      });
-
-      pengamatanMap[key].mesinFotos[mes] = fotos;
+      if (!pengamatanMap[key].mesinFotos[mes]) {
+        pengamatanMap[key].mesinFotos[mes] = {};
+      }
     });
 
     const loadedPengamatans = Object.values(pengamatanMap).map(peng => ({
@@ -207,13 +221,17 @@ const CreateKlipingScreen: React.FC = () => {
       const photoDataUrl = await cameraManager.current.capturePhoto();
 
       if (photoDataUrl && currentMesin) {
-        setMesinFotos(prev => ({
-          ...prev,
-          [currentMesin]: {
-            ...(prev[currentMesin] || {}),
-            [currentFotoKey]: photoDataUrl
-          }
-        }));
+        setMesinFotos(prev => {
+          const updated = {
+            ...prev,
+            [currentMesin]: {
+              ...(prev[currentMesin] || {}),
+              [currentFotoKey]: photoDataUrl
+            }
+          };
+          updatePhotoCount(currentMesin, updated[currentMesin]);
+          return updated;
+        });
         closeCamera();
       } else {
         setCameraError('Gagal mengambil foto. Silakan coba lagi.');
@@ -247,13 +265,17 @@ const CreateKlipingScreen: React.FC = () => {
     try {
       const processedImage = await cameraManager.current.processUploadedImage(file);
       if (processedImage) {
-        setMesinFotos(prev => ({
-          ...prev,
-          [mesin]: {
-            ...(prev[mesin] || {}),
-            [fotoKey]: processedImage
-          }
-        }));
+        setMesinFotos(prev => {
+          const updated = {
+            ...prev,
+            [mesin]: {
+              ...(prev[mesin] || {}),
+              [fotoKey]: processedImage
+            }
+          };
+          updatePhotoCount(mesin, updated[mesin]);
+          return updated;
+        });
       } else {
         alert('Gagal memproses gambar');
       }
@@ -371,6 +393,106 @@ const CreateKlipingScreen: React.FC = () => {
       console.error('Error getting current user:', error);
     }
     return 'Unknown';
+  };
+
+  const updatePhotoCount = (mesin: string, mesinFotosData: { [fotoKey: string]: string }) => {
+    const count = Object.values(mesinFotosData || {}).filter(Boolean).length;
+    setMesinPhotoCounts(prev => ({
+      ...prev,
+      [mesin]: count
+    }));
+  };
+
+  const getPhotoCountForMesin = (mesin: string): string => {
+    const count = mesinPhotoCounts[mesin] || 0;
+    const total = FOTO_TYPES.length;
+    return `${count}/${total} foto`;
+  };
+
+  const fetchExistingPhotosForMesin = async (mesin: string) => {
+    if (!pengamatan || !flavor) return;
+
+    try {
+      const photos = await getKlipingRecordPhotos({
+        plant,
+        tanggal,
+        line,
+        regu,
+        shift,
+        Pengamatan_ke: pengamatan,
+        Mesin: mesin
+      });
+
+      if (photos) {
+        const photoData: { [key: string]: string } = {};
+        let count = 0;
+        FOTO_TYPES.forEach(ft => {
+          const val = (photos as any)[ft.key];
+          if (val) {
+            photoData[ft.key] = val;
+            count++;
+          }
+        });
+
+        if (count > 0) {
+          setMesinPhotoCounts(prev => ({
+            ...prev,
+            [mesin]: count
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('[FETCH] Error fetching existing photos for mesin:', error);
+    }
+  };
+
+  const handlePreviewPhotos = async (pengamatanData: PengamatanData, mesin: string) => {
+    setLoadingPhotos(true);
+    setPhotoPreviewModal(true);
+    setPreviewPhotos({});
+
+    const filters = {
+      plant,
+      tanggal,
+      line,
+      regu,
+      shift,
+      Pengamatan_ke: pengamatanData.number,
+      Mesin: mesin
+    };
+
+    console.log('[PREVIEW] Fetching photos with filters:', filters);
+
+    try {
+      const photos = await getKlipingRecordPhotos(filters);
+
+      console.log('[PREVIEW] Photos received:', photos);
+
+      if (photos) {
+        const photoData: { [key: string]: string } = {};
+        FOTO_TYPES.forEach(ft => {
+          const val = (photos as any)[ft.key];
+          if (val) {
+            console.log(`[PREVIEW] Found photo for ${ft.key}`);
+            photoData[ft.key] = val;
+          }
+        });
+        console.log('[PREVIEW] Total photos found:', Object.keys(photoData).length);
+        setPreviewPhotos(photoData);
+
+        if (Object.keys(photoData).length === 0) {
+          alert('Tidak ada foto yang tersimpan untuk mesin ini');
+        }
+      } else {
+        console.log('[PREVIEW] No photos returned from query');
+        alert('Foto tidak ditemukan atau belum diupload');
+      }
+    } catch (error) {
+      console.error('[PREVIEW] Error loading photos:', error);
+      alert('Gagal memuat foto');
+    } finally {
+      setLoadingPhotos(false);
+    }
   };
 
   const handleEditPengamatan = (index: number) => {
@@ -756,8 +878,8 @@ const CreateKlipingScreen: React.FC = () => {
                 </p>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
                   {MESIN_OPTIONS.map(mesin => {
-                    const mesinFotosCount = mesinFotos[mesin] ? Object.values(mesinFotos[mesin]).filter(Boolean).length : 0;
                     const isSelected = selectedMesin === mesin;
+                    const photoCountText = getPhotoCountForMesin(mesin);
 
                     return (
                       <button
@@ -781,11 +903,9 @@ const CreateKlipingScreen: React.FC = () => {
                         }}
                       >
                         <span>{mesin}</span>
-                        {mesinFotosCount > 0 && (
-                          <span style={{ fontSize: '12px', opacity: 0.9 }}>
-                            {mesinFotosCount}/{FOTO_TYPES.length} foto
-                          </span>
-                        )}
+                        <span style={{ fontSize: '12px', opacity: 0.9 }}>
+                          {photoCountText}
+                        </span>
                       </button>
                     );
                   })}
@@ -906,13 +1026,17 @@ const CreateKlipingScreen: React.FC = () => {
                           type="button"
                           onClick={() => {
                             if (confirm('Hapus foto ini?')) {
-                              setMesinFotos(prev => ({
-                                ...prev,
-                                [selectedMesin]: {
-                                  ...(prev[selectedMesin] || {}),
-                                  [fotoType.key]: ''
-                                }
-                              }));
+                              setMesinFotos(prev => {
+                                const updated = {
+                                  ...prev,
+                                  [selectedMesin]: {
+                                    ...(prev[selectedMesin] || {}),
+                                    [fotoType.key]: ''
+                                  }
+                                };
+                                updatePhotoCount(selectedMesin, updated[selectedMesin]);
+                                return updated;
+                              });
                             }
                           }}
                           style={{
@@ -992,11 +1116,46 @@ const CreateKlipingScreen: React.FC = () => {
                       Pengamatan {peng.number}: {peng.flavor}
                     </p>
                     {peng.mesins.length > 0 && (
-                      <p style={{ fontSize: '12px', color: '#047857', marginTop: '4px' }}>
-                        Mesin: {peng.mesins.join(', ')}
-                      </p>
+                      <div style={{ marginTop: '8px' }}>
+                        <p style={{ fontSize: '12px', color: '#047857', marginBottom: '6px', fontWeight: '500' }}>
+                          Mesin:
+                        </p>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          {peng.mesins.map((mesin, mIdx) => (
+                            <button
+                              key={mIdx}
+                              onClick={() => handlePreviewPhotos(peng, mesin)}
+                              style={{
+                                padding: '4px 10px',
+                                background: '#ecfdf5',
+                                border: '1px solid #10b981',
+                                borderRadius: '6px',
+                                color: '#065f46',
+                                fontSize: '12px',
+                                fontWeight: '500',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                transition: 'all 0.2s'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = '#10b981';
+                                e.currentTarget.style.color = 'white';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = '#ecfdf5';
+                                e.currentTarget.style.color = '#065f46';
+                              }}
+                            >
+                              <Eye size={12} />
+                              {mesin}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     )}
-                    <p style={{ fontSize: '11px', color: '#6b7280', marginTop: '4px', fontStyle: 'italic' }}>
+                    <p style={{ fontSize: '11px', color: '#6b7280', marginTop: '8px', fontStyle: 'italic' }}>
                       💡 Untuk menambah mesin, pilih pengamatan & flavor yang sama lalu pilih mesin baru
                     </p>
                   </div>
@@ -1117,6 +1276,104 @@ const CreateKlipingScreen: React.FC = () => {
             >
               ×
             </button>
+          </div>
+        </div>
+      )}
+
+      {photoPreviewModal && (
+        <div
+          onClick={() => setPhotoPreviewModal(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.95)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 3000,
+            padding: '20px',
+            overflow: 'auto'
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'white',
+              borderRadius: '16px',
+              padding: '24px',
+              maxWidth: '900px',
+              width: '100%',
+              maxHeight: '90vh',
+              overflow: 'auto',
+              position: 'relative'
+            }}
+          >
+            <button
+              onClick={() => setPhotoPreviewModal(false)}
+              style={{
+                position: 'absolute',
+                top: '16px',
+                right: '16px',
+                background: '#ef4444',
+                color: 'white',
+                border: 'none',
+                borderRadius: '50%',
+                width: '36px',
+                height: '36px',
+                fontSize: '24px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 10
+              }}
+            >
+              ×
+            </button>
+
+            <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#065f46', marginBottom: '20px' }}>
+              Preview Foto
+            </h2>
+
+            {loadingPhotos ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
+                Loading foto...
+              </div>
+            ) : Object.keys(previewPhotos).length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
+                Tidak ada foto tersedia
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px' }}>
+                {FOTO_TYPES.map(ft => {
+                  const photoData = previewPhotos[ft.key];
+                  if (!photoData) return null;
+
+                  return (
+                    <div key={ft.key} style={{ background: '#f9fafb', borderRadius: '12px', padding: '12px', border: '1px solid #e5e7eb' }}>
+                      <p style={{ fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
+                        {ft.label}
+                      </p>
+                      <img
+                        src={photoData}
+                        alt={ft.label}
+                        style={{
+                          width: '100%',
+                          height: '200px',
+                          objectFit: 'cover',
+                          borderRadius: '8px',
+                          cursor: 'pointer'
+                        }}
+                        onClick={() => setPreviewImage(photoData)}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}

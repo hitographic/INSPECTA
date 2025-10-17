@@ -156,6 +156,98 @@ export const getKlipingRecordById = async (id: number): Promise<KlipingRecord | 
   }
 };
 
+export const getKlipingRecordPhotos = async (filters: {
+  plant: string;
+  tanggal: string;
+  line: string;
+  regu: string;
+  shift: string;
+  Pengamatan_ke: string;
+  Mesin: string;
+}): Promise<Partial<KlipingRecord> | null> => {
+  try {
+    console.log('[KLIPING] Fetching photos for mesin with filters:', filters);
+
+    const { data, error } = await supabase
+      .from('kliping_records')
+      .select('foto_etiket, foto_banded, foto_karton, foto_label_etiket, foto_label_bumbu, foto_label_minyak_bumbu, foto_label_si, foto_label_opp_banded')
+      .eq('plant', filters.plant)
+      .eq('tanggal', filters.tanggal)
+      .eq('line', filters.line)
+      .eq('regu', filters.regu)
+      .eq('shift', filters.shift)
+      .eq('Pengamatan_ke', filters.Pengamatan_ke)
+      .eq('Mesin', filters.Mesin)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[KLIPING] Error fetching photos:', error);
+      return null;
+    }
+
+    console.log('[KLIPING] Photos fetched successfully:', data ? 'Yes' : 'No');
+    return data;
+  } catch (error) {
+    console.error('[KLIPING] Exception in getKlipingRecordPhotos:', error);
+    return null;
+  }
+};
+
+export const getKlipingRecordsWithPhotos = async (filters?: {
+  plant?: string;
+  startDate?: string;
+  endDate?: string;
+  line?: string;
+  regu?: string;
+  shift?: string;
+}): Promise<KlipingRecord[]> => {
+  try {
+    console.log('[KLIPING] Fetching records WITH PHOTOS with filters:', filters);
+
+    let query = supabase
+      .from('kliping_records')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (filters?.plant) {
+      query = query.eq('plant', filters.plant);
+    }
+
+    if (filters?.startDate) {
+      query = query.gte('tanggal', filters.startDate);
+    }
+
+    if (filters?.endDate) {
+      query = query.lte('tanggal', filters.endDate);
+    }
+
+    if (filters?.line) {
+      query = query.eq('line', filters.line);
+    }
+
+    if (filters?.regu) {
+      query = query.eq('regu', filters.regu);
+    }
+
+    if (filters?.shift) {
+      query = query.eq('shift', filters.shift);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('[KLIPING] Error fetching records with photos:', error);
+      throw error;
+    }
+
+    console.log('[KLIPING] Fetched', data?.length || 0, 'records WITH PHOTOS');
+    return data || [];
+  } catch (error) {
+    console.error('[KLIPING] Error in getKlipingRecordsWithPhotos:', error);
+    return [];
+  }
+};
+
 export const deleteKlipingRecord = async (id: number): Promise<{ success: boolean; error?: string }> => {
   try {
     const { error } = await supabase
