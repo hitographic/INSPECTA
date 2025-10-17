@@ -60,6 +60,7 @@ const CreateKlipingScreen: React.FC = () => {
   const [editingPengamatanIndex, setEditingPengamatanIndex] = useState<number | null>(null);
 
   const [saving, setSaving] = useState(false);
+  const [loadingEdit, setLoadingEdit] = useState(false);
 
   const [cameraVisible, setCameraVisible] = useState(false);
   const [currentFotoKey, setCurrentFotoKey] = useState('');
@@ -89,12 +90,18 @@ const CreateKlipingScreen: React.FC = () => {
   }, [mesinFotos]);
 
   useEffect(() => {
-    if (selectedMesin && pengamatan && !mesinFotos[selectedMesin]) {
-      fetchExistingPhotosForMesin(selectedMesin);
+    if (selectedMesin && pengamatan) {
+      if (!mesinFotos[selectedMesin]) {
+        fetchExistingPhotosForMesin(selectedMesin);
+      } else {
+        // Update count if mesinFotos already exists
+        updatePhotoCount(selectedMesin, mesinFotos[selectedMesin]);
+      }
     }
   }, [selectedMesin]);
 
   const loadExistingSession = async () => {
+    // Load metadata only (no photos) for fast initial load
     const records = await getKlipingRecords({
       plant,
       startDate: tanggal,
@@ -133,6 +140,7 @@ const CreateKlipingScreen: React.FC = () => {
         pengamatanMap[key].mesins.push(mes);
       }
 
+      // Initialize empty mesinFotos - will be loaded on-demand
       if (!pengamatanMap[key].mesinFotos[mes]) {
         pengamatanMap[key].mesinFotos[mes] = {};
       }
@@ -144,6 +152,13 @@ const CreateKlipingScreen: React.FC = () => {
     }));
     setSavedPengamatans(loadedPengamatans);
     setUsedPengamatanNumbers(loadedPengamatans.map(p => p.number));
+
+    // Load photo counts in background (fast - just count, no photo data)
+    loadedPengamatans.forEach(peng => {
+      peng.mesins.forEach(async (mesin) => {
+        await loadPhotoCountForMesin(peng.number, peng.flavor, mesin);
+      });
+    });
   };
 
   const handlePengamatanChange = (value: string) => {
@@ -409,6 +424,39 @@ const CreateKlipingScreen: React.FC = () => {
     return `${count}/${total} foto`;
   };
 
+  const loadPhotoCountForMesin = async (pengamatanNum: string, _flavorVal: string, mesin: string) => {
+    try {
+      const photos = await getKlipingRecordPhotos({
+        plant,
+        tanggal,
+        line,
+        regu,
+        shift,
+        Pengamatan_ke: pengamatanNum,
+        Mesin: mesin
+      });
+
+      if (photos) {
+        let count = 0;
+        FOTO_TYPES.forEach(ft => {
+          const val = (photos as any)[ft.key];
+          if (val) {
+            count++;
+          }
+        });
+
+        if (count > 0) {
+          setMesinPhotoCounts(prev => ({
+            ...prev,
+            [mesin]: count
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('[COUNT] Error loading photo count for mesin:', error);
+    }
+  };
+
   const fetchExistingPhotosForMesin = async (mesin: string) => {
     if (!pengamatan || !flavor) return;
 
@@ -434,12 +482,17 @@ const CreateKlipingScreen: React.FC = () => {
           }
         });
 
-        if (count > 0) {
-          setMesinPhotoCounts(prev => ({
-            ...prev,
-            [mesin]: count
-          }));
-        }
+        // Update mesinFotos state with actual photo data
+        setMesinFotos(prev => ({
+          ...prev,
+          [mesin]: photoData
+        }));
+
+        // Update count
+        setMesinPhotoCounts(prev => ({
+          ...prev,
+          [mesin]: count
+        }));
       }
     } catch (error) {
       console.error('[FETCH] Error fetching existing photos for mesin:', error);
@@ -495,16 +548,61 @@ const CreateKlipingScreen: React.FC = () => {
     }
   };
 
-  const handleEditPengamatan = (index: number) => {
+  const handleEditPengamatan = async (index: number) => {
     const peng = savedPengamatans[index];
+    setLoadingEdit(true);
+
     setPengamatan(peng.number);
     setFlavor(peng.flavor);
     setTimestamp(peng.timestamp);
-    setMesinFotos(JSON.parse(JSON.stringify(peng.mesinFotos)));
     setEditingPengamatanIndex(index);
     setShowMesinFoto(true);
     setSelectedMesin('');
     setIsFlavorLocked(true);
+
+    try {
+      // Load foto data untuk semua mesin di pengamatan ini
+      const loadedMesinFotos: MesinFotos = {};
+      for (const mesin of peng.mesins) {
+        try {
+          const photos = await getKlipingRecordPhotos({
+            plant,
+            tanggal,
+            line,
+            regu,
+            shift,
+            Pengamatan_ke: peng.number,
+            Mesin: mesin
+          });
+
+          if (photos) {
+            const photoData: { [key: string]: string } = {};
+            let count = 0;
+            FOTO_TYPES.forEach(ft => {
+              const val = (photos as any)[ft.key];
+              if (val) {
+                photoData[ft.key] = val;
+                count++;
+              }
+            });
+            loadedMesinFotos[mesin] = photoData;
+
+            // Update count
+            setMesinPhotoCounts(prev => ({
+              ...prev,
+              [mesin]: count
+            }));
+          }
+        } catch (error) {
+          console.error('[EDIT] Error loading photos for mesin:', mesin, error);
+          loadedMesinFotos[mesin] = {};
+        }
+      }
+
+      setMesinFotos(loadedMesinFotos);
+    } finally {
+      setLoadingEdit(false);
+    }
   };
 
   const handleDeletePengamatan = (index: number) => {
@@ -876,6 +974,17 @@ const CreateKlipingScreen: React.FC = () => {
                 }}>
                   Pilih Mesin untuk Input/Lihat Foto:
                 </p>
+                {loadingEdit && (
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '12px',
+                    background: '#f0fdf4',
+                    borderRadius: '8px',
+                    marginBottom: '12px'
+                  }}>
+                    <p style={{ fontSize: '13px', color: '#16a34a' }}>⏳ Loading foto...</p>
+                  </div>
+                )}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
                   {MESIN_OPTIONS.map(mesin => {
                     const isSelected = selectedMesin === mesin;
@@ -1162,22 +1271,24 @@ const CreateKlipingScreen: React.FC = () => {
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button
                       onClick={() => handleEditPengamatan(idx)}
+                      disabled={loadingEdit}
                       style={{
                         padding: '8px 12px',
-                        background: '#10b981',
+                        background: loadingEdit ? '#9ca3af' : '#10b981',
                         color: 'white',
                         border: 'none',
                         borderRadius: '6px',
-                        cursor: 'pointer',
+                        cursor: loadingEdit ? 'not-allowed' : 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '4px',
                         fontSize: '12px',
-                        fontWeight: '500'
+                        fontWeight: '500',
+                        opacity: loadingEdit ? 0.7 : 1
                       }}
                     >
                       <Edit size={14} />
-                      Edit
+                      {loadingEdit ? 'Loading...' : 'Edit'}
                     </button>
                     <button
                       onClick={() => handleDeletePengamatan(idx)}
