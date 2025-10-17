@@ -67,6 +67,37 @@ export const updateKlipingRecord = async (id: number, updates: Partial<KlipingRe
   }
 };
 
+export const countKlipingPhotos = async (filters?: {
+  plant?: string;
+  startDate?: string;
+  endDate?: string;
+  line?: string;
+  regu?: string;
+  shift?: string;
+}): Promise<{ [key: string]: number }> => {
+  try {
+    const { data, error } = await supabase.rpc('count_kliping_photos', {
+      p_plant: filters?.plant || null
+    });
+
+    if (error) {
+      console.error('[KLIPING] Error counting photos:', error);
+      return {};
+    }
+
+    const counts: { [key: string]: number } = {};
+    data?.forEach((row: any) => {
+      const key = `${row.tanggal}_${row.line}_${row.regu}_${row.shift}_${row.pengamatan_ke}_${row.mesin}`;
+      counts[key] = row.photo_count;
+    });
+
+    return counts;
+  } catch (error) {
+    console.error('[KLIPING] Exception in countKlipingPhotos:', error);
+    return {};
+  }
+};
+
 export const getKlipingRecords = async (filters?: {
   plant?: string;
   startDate?: string;

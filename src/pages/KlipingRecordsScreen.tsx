@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Plus, FileDown, Trash2, Eye, X } from 'lucide-react';
 import { KlipingRecord } from '../types/database';
-import { getKlipingRecords, getKlipingRecordsWithPhotos, getKlipingRecordPhotos, REGU_OPTIONS, SHIFT_OPTIONS, FOTO_TYPES } from '../utils/klipingDatabase';
+import { getKlipingRecords, getKlipingRecordsWithPhotos, getKlipingRecordPhotos, countKlipingPhotos, REGU_OPTIONS, SHIFT_OPTIONS, FOTO_TYPES } from '../utils/klipingDatabase';
 import { exportKlipingToExcel, exportKlipingToPDF, exportAllKlipingToZip } from '../utils/klipingExport';
 import { supabase } from '../utils/supabase';
 import { PLANTS } from '../constants/AppConstants';
@@ -36,6 +36,7 @@ const KlipingRecordsScreen: React.FC = () => {
   const [previewPhotos, setPreviewPhotos] = useState<{ [key: string]: string }>({});
   const [loadingPhotos, setLoadingPhotos] = useState(false);
   const [canPreviewPhotos, setCanPreviewPhotos] = useState(false);
+  const [photoCounts, setPhotoCounts] = useState<{ [key: string]: number }>({});
 
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
@@ -96,13 +97,19 @@ const KlipingRecordsScreen: React.FC = () => {
       console.log('[KLIPING SCREEN] Starting loadRecords for plant:', plant);
       setLoading(true);
 
-      const data = await getKlipingRecords({ plant });
+      const [data, counts] = await Promise.all([
+        getKlipingRecords({ plant }),
+        countKlipingPhotos({ plant })
+      ]);
 
       console.log('[KLIPING SCREEN] Received data:', data);
       console.log('[KLIPING SCREEN] Data length:', data?.length);
       console.log('[KLIPING SCREEN] Sample record:', data?.[0]);
+      console.log('[KLIPING SCREEN] Photo counts:', counts);
 
       setRecords(data);
+      setPhotoCounts(counts);
+
       setLoading(false);
 
       console.log('[KLIPING SCREEN] State updated, records count:', data.length);
@@ -671,13 +678,13 @@ const KlipingRecordsScreen: React.FC = () => {
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
                       <div>
-                        <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#065f46', marginBottom: '4px' }}>
+                        <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#065f46', marginBottom: '4px' }}>
                           {firstRecord.line} - Regu {firstRecord.regu} - Shift {firstRecord.shift}
                         </h3>
-                        <p style={{ fontSize: '14px', color: '#047857', marginBottom: '8px' }}>
+                        <p style={{ fontSize: '13px', color: '#047857', marginBottom: '8px' }}>
                           {formatDate(firstRecord.tanggal)}
                         </p>
-                        <div style={{ fontSize: '14px', color: '#065f46', marginTop: '8px' }}>
+                        <div style={{ fontSize: '13px', color: '#065f46', marginTop: '8px' }}>
                           {(() => {
                             const pengamatanMap: { [key: string]: { flavor: string; mesins: string[] } } = {};
 
@@ -699,96 +706,116 @@ const KlipingRecordsScreen: React.FC = () => {
                             return Object.entries(pengamatanMap)
                               .sort(([a], [b]) => parseInt(a) - parseInt(b))
                               .map(([pengNum, data]) => (
-                                <div key={pengNum} style={{ marginBottom: '12px', padding: '12px', background: 'rgba(255,255,255,0.5)', borderRadius: '8px' }}>
-                                  <p style={{ marginBottom: '8px', fontWeight: '600' }}>
+                                <div key={pengNum} style={{ marginBottom: '10px', padding: '10px', background: 'rgba(255,255,255,0.5)', borderRadius: '8px' }}>
+                                  <p style={{ marginBottom: '8px', fontWeight: '600', fontSize: '13px' }}>
                                     Pengamatan {pengNum}: {data.flavor}
                                   </p>
-                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                    {data.mesins.sort((a, b) => parseInt(a) - parseInt(b)).map(mesinNum => (
-                                      <button
-                                        key={mesinNum}
-                                        onClick={() => canPreviewPhotos && handlePreviewPhotos(firstRecord, pengNum, `Mesin ${mesinNum}`)}
-                                        disabled={!canPreviewPhotos}
-                                        style={{
-                                          padding: '6px 12px',
-                                          background: canPreviewPhotos ? '#10b981' : '#9ca3af',
-                                          color: 'white',
-                                          border: 'none',
-                                          borderRadius: '6px',
-                                          fontSize: '12px',
-                                          fontWeight: '500',
-                                          cursor: canPreviewPhotos ? 'pointer' : 'not-allowed',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: '4px'
-                                        }}
-                                      >
-                                        <Eye size={14} />
-                                        Mesin {mesinNum}
-                                      </button>
-                                    ))}
+                                  <div style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(2, 1fr)',
+                                    gap: '8px'
+                                  }}>
+                                    {data.mesins.sort((a, b) => parseInt(a) - parseInt(b)).map(mesinNum => {
+                                      const photoKey = `${firstRecord.tanggal}_${firstRecord.line}_${firstRecord.regu}_${firstRecord.shift}_${pengNum}_Mesin ${mesinNum}`;
+                                      const photoCount = photoCounts[photoKey] || 0;
+                                      const totalPhotos = 8;
+
+                                      return (
+                                        <button
+                                          key={mesinNum}
+                                          onClick={() => canPreviewPhotos && handlePreviewPhotos(firstRecord, pengNum, `Mesin ${mesinNum}`)}
+                                          disabled={!canPreviewPhotos}
+                                          style={{
+                                            padding: '8px 10px',
+                                            background: canPreviewPhotos ? '#10b981' : '#9ca3af',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            fontSize: '11px',
+                                            fontWeight: '600',
+                                            cursor: canPreviewPhotos ? 'pointer' : 'not-allowed',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            gap: '4px',
+                                            whiteSpace: 'nowrap',
+                                            minHeight: '36px'
+                                          }}
+                                        >
+                                          <Eye size={12} />
+                                          <span>Mesin {mesinNum}</span>
+                                          <span style={{
+                                            fontSize: '10px',
+                                            background: 'rgba(255,255,255,0.2)',
+                                            padding: '2px 6px',
+                                            borderRadius: '4px',
+                                            marginLeft: '2px'
+                                          }}>
+                                            {photoCount}/{totalPhotos}
+                                          </span>
+                                        </button>
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               ));
                           })()}
                         </div>
-                        <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '8px' }}>
+                        <p style={{ fontSize: '11px', color: '#6b7280', marginTop: '8px' }}>
                           Dibuat oleh: {firstRecord.created_by}
                         </p>
                       </div>
                       <div style={{
                         background: firstRecord.is_complete ? '#10b981' : '#f59e0b',
                         color: 'white',
-                        padding: '6px 12px',
+                        padding: '4px 10px',
                         borderRadius: '20px',
-                        fontSize: '12px',
+                        fontSize: '11px',
                         fontWeight: '600',
                       }}>
                         {firstRecord.is_complete ? 'Complete' : 'Draft'}
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: canDelete() ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)', gap: '6px', marginTop: '12px' }}>
                       <button
                         onClick={() => handleExportRecordExcel(firstRecord)}
                       style={{
-                        flex: 1,
-                        padding: '10px',
+                        padding: '8px 6px',
                         background: 'white',
                         border: '1px solid #16a34a',
-                        borderRadius: '8px',
+                        borderRadius: '6px',
                         color: '#16a34a',
-                        fontSize: '13px',
-                        fontWeight: '500',
+                        fontSize: '11px',
+                        fontWeight: '600',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        gap: '6px',
+                        gap: '4px',
                       }}
                     >
-                      <FileDown size={14} />
+                      <FileDown size={12} />
                       Excel
                     </button>
                       <button
                         onClick={() => handleExportRecordPDF(firstRecord)}
                       style={{
-                        flex: 1,
-                        padding: '10px',
+                        padding: '8px 6px',
                         background: 'white',
                         border: '1px solid #dc2626',
-                        borderRadius: '8px',
+                        borderRadius: '6px',
                         color: '#dc2626',
-                        fontSize: '13px',
-                        fontWeight: '500',
+                        fontSize: '11px',
+                        fontWeight: '600',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        gap: '6px',
+                        gap: '4px',
                       }}
                     >
-                      <FileDown size={14} />
+                      <FileDown size={12} />
                       PDF
                     </button>
                       <button
@@ -802,14 +829,13 @@ const KlipingRecordsScreen: React.FC = () => {
                           }
                         })}
                         style={{
-                          flex: 1,
-                          padding: '10px',
+                          padding: '8px 6px',
                           background: '#10b981',
                           border: 'none',
-                          borderRadius: '8px',
+                          borderRadius: '6px',
                           color: 'white',
-                          fontSize: '13px',
-                          fontWeight: '500',
+                          fontSize: '11px',
+                          fontWeight: '600',
                           cursor: 'pointer',
                         }}
                       >
@@ -828,23 +854,22 @@ const KlipingRecordsScreen: React.FC = () => {
                             }
                           }}
                         style={{
-                          flex: 1,
-                          padding: '10px',
+                          padding: '8px 6px',
                           background: '#fef2f2',
                           border: '1px solid #fecaca',
-                          borderRadius: '8px',
+                          borderRadius: '6px',
                           color: '#dc2626',
-                          fontSize: '13px',
-                          fontWeight: '500',
+                          fontSize: '11px',
+                          fontWeight: '600',
                           cursor: 'pointer',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          gap: '6px',
+                          gap: '4px',
                         }}
                       >
-                        <Trash2 size={14} />
-                        Delete
+                        <Trash2 size={12} />
+                        Del
                       </button>
                     )}
                     </div>
@@ -854,94 +879,233 @@ const KlipingRecordsScreen: React.FC = () => {
 
                       {totalPages > 1 && (
                         <div style={{
-                          display: 'flex',
-                          justifyContent: 'center',
-                          alignItems: 'center',
-                          gap: '8px',
-                          marginTop: '32px',
-                          paddingTop: '24px',
+                          marginTop: '24px',
+                          paddingTop: '20px',
                           borderTop: '2px solid #d1fae5'
                         }}>
-                          <button
-                            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                            disabled={currentPage === 1}
-                            style={{
-                              padding: '10px 16px',
-                              background: currentPage === 1 ? '#e5e7eb' : '#10b981',
-                              color: currentPage === 1 ? '#9ca3af' : 'white',
-                              border: 'none',
-                              borderRadius: '8px',
-                              fontSize: '14px',
-                              fontWeight: '600',
-                              cursor: currentPage === 1 ? 'not-allowed' : 'pointer'
-                            }}
-                          >
-                            Previous
-                          </button>
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '12px',
+                            flexWrap: 'wrap',
+                            gap: '8px'
+                          }}>
+                            <div style={{
+                              fontSize: '12px',
+                              color: '#6b7280',
+                              fontWeight: '600'
+                            }}>
+                              Showing {((currentPage - 1) * itemsPerPage) + 1}-{Math.min(currentPage * itemsPerPage, allGroups.length)} of {allGroups.length}
+                            </div>
+                            <div style={{
+                              fontSize: '12px',
+                              color: '#10b981',
+                              fontWeight: '600'
+                            }}>
+                              Page {currentPage} / {totalPages}
+                            </div>
+                          </div>
 
                           <div style={{
                             display: 'flex',
-                            gap: '4px',
-                            alignItems: 'center'
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            gap: '6px',
+                            flexWrap: 'wrap'
                           }}>
-                            {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => {
-                              if (
-                                page === 1 ||
-                                page === totalPages ||
-                                (page >= currentPage - 1 && page <= currentPage + 1)
-                              ) {
-                                return (
-                                  <button
-                                    key={page}
-                                    onClick={() => setCurrentPage(page)}
-                                    style={{
-                                      padding: '8px 12px',
-                                      background: page === currentPage ? '#10b981' : 'white',
-                                      color: page === currentPage ? 'white' : '#065f46',
-                                      border: `2px solid ${page === currentPage ? '#10b981' : '#d1fae5'}`,
-                                      borderRadius: '8px',
-                                      fontSize: '14px',
-                                      fontWeight: '600',
-                                      cursor: 'pointer',
-                                      minWidth: '40px'
-                                    }}
-                                  >
-                                    {page}
-                                  </button>
-                                );
-                              } else if (
-                                page === currentPage - 2 ||
-                                page === currentPage + 2
-                              ) {
-                                return <span key={page} style={{ padding: '0 4px', color: '#6b7280' }}>...</span>;
-                              }
-                              return null;
-                            })}
+                            <button
+                              onClick={() => setCurrentPage(1)}
+                              disabled={currentPage === 1}
+                              style={{
+                                padding: '8px 12px',
+                                background: currentPage === 1 ? '#e5e7eb' : 'white',
+                                color: currentPage === 1 ? '#9ca3af' : '#10b981',
+                                border: `2px solid ${currentPage === 1 ? '#e5e7eb' : '#10b981'}`,
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                fontWeight: '600',
+                                cursor: currentPage === 1 ? 'not-allowed' : 'pointer'
+                              }}
+                            >
+                              ≪
+                            </button>
+
+                            <button
+                              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                              disabled={currentPage === 1}
+                              style={{
+                                padding: '8px 14px',
+                                background: currentPage === 1 ? '#e5e7eb' : '#10b981',
+                                color: currentPage === 1 ? '#9ca3af' : 'white',
+                                border: 'none',
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                fontWeight: '600',
+                                cursor: currentPage === 1 ? 'not-allowed' : 'pointer'
+                              }}
+                            >
+                              ‹ Prev
+                            </button>
+
+                            <div style={{
+                              display: 'flex',
+                              gap: '4px',
+                              alignItems: 'center'
+                            }}>
+                              {(() => {
+                                const pageButtons = [];
+                                const showPages = 5;
+                                let startPage = Math.max(1, currentPage - Math.floor(showPages / 2));
+                                let endPage = Math.min(totalPages, startPage + showPages - 1);
+
+                                if (endPage - startPage < showPages - 1) {
+                                  startPage = Math.max(1, endPage - showPages + 1);
+                                }
+
+                                if (startPage > 1) {
+                                  pageButtons.push(
+                                    <button
+                                      key={1}
+                                      onClick={() => setCurrentPage(1)}
+                                      style={{
+                                        padding: '8px 12px',
+                                        background: 'white',
+                                        color: '#065f46',
+                                        border: '2px solid #d1fae5',
+                                        borderRadius: '6px',
+                                        fontSize: '12px',
+                                        fontWeight: '600',
+                                        cursor: 'pointer',
+                                        minWidth: '36px'
+                                      }}
+                                    >
+                                      1
+                                    </button>
+                                  );
+                                  if (startPage > 2) {
+                                    pageButtons.push(
+                                      <span key="start-dots" style={{ padding: '0 4px', color: '#6b7280', fontSize: '12px' }}>•••</span>
+                                    );
+                                  }
+                                }
+
+                                for (let i = startPage; i <= endPage; i++) {
+                                  pageButtons.push(
+                                    <button
+                                      key={i}
+                                      onClick={() => setCurrentPage(i)}
+                                      style={{
+                                        padding: '8px 12px',
+                                        background: i === currentPage ? '#10b981' : 'white',
+                                        color: i === currentPage ? 'white' : '#065f46',
+                                        border: `2px solid ${i === currentPage ? '#10b981' : '#d1fae5'}`,
+                                        borderRadius: '6px',
+                                        fontSize: '12px',
+                                        fontWeight: '600',
+                                        cursor: 'pointer',
+                                        minWidth: '36px'
+                                      }}
+                                    >
+                                      {i}
+                                    </button>
+                                  );
+                                }
+
+                                if (endPage < totalPages) {
+                                  if (endPage < totalPages - 1) {
+                                    pageButtons.push(
+                                      <span key="end-dots" style={{ padding: '0 4px', color: '#6b7280', fontSize: '12px' }}>•••</span>
+                                    );
+                                  }
+                                  pageButtons.push(
+                                    <button
+                                      key={totalPages}
+                                      onClick={() => setCurrentPage(totalPages)}
+                                      style={{
+                                        padding: '8px 12px',
+                                        background: 'white',
+                                        color: '#065f46',
+                                        border: '2px solid #d1fae5',
+                                        borderRadius: '6px',
+                                        fontSize: '12px',
+                                        fontWeight: '600',
+                                        cursor: 'pointer',
+                                        minWidth: '36px'
+                                      }}
+                                    >
+                                      {totalPages}
+                                    </button>
+                                  );
+                                }
+
+                                return pageButtons;
+                              })()}
+                            </div>
+
+                            <button
+                              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                              disabled={currentPage === totalPages}
+                              style={{
+                                padding: '8px 14px',
+                                background: currentPage === totalPages ? '#e5e7eb' : '#10b981',
+                                color: currentPage === totalPages ? '#9ca3af' : 'white',
+                                border: 'none',
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                fontWeight: '600',
+                                cursor: currentPage === totalPages ? 'not-allowed' : 'pointer'
+                              }}
+                            >
+                              Next ›
+                            </button>
+
+                            <button
+                              onClick={() => setCurrentPage(totalPages)}
+                              disabled={currentPage === totalPages}
+                              style={{
+                                padding: '8px 12px',
+                                background: currentPage === totalPages ? '#e5e7eb' : 'white',
+                                color: currentPage === totalPages ? '#9ca3af' : '#10b981',
+                                border: `2px solid ${currentPage === totalPages ? '#e5e7eb' : '#10b981'}`,
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                fontWeight: '600',
+                                cursor: currentPage === totalPages ? 'not-allowed' : 'pointer'
+                              }}
+                            >
+                              ≫
+                            </button>
                           </div>
 
-                          <button
-                            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                            disabled={currentPage === totalPages}
-                            style={{
-                              padding: '10px 16px',
-                              background: currentPage === totalPages ? '#e5e7eb' : '#10b981',
-                              color: currentPage === totalPages ? '#9ca3af' : 'white',
-                              border: 'none',
-                              borderRadius: '8px',
-                              fontSize: '14px',
-                              fontWeight: '600',
-                              cursor: currentPage === totalPages ? 'not-allowed' : 'pointer'
-                            }}
-                          >
-                            Next
-                          </button>
-
                           <div style={{
-                            marginLeft: '16px',
-                            fontSize: '14px',
-                            color: '#6b7280'
+                            marginTop: '12px',
+                            textAlign: 'center',
+                            fontSize: '11px',
+                            color: '#9ca3af'
                           }}>
-                            Page {currentPage} of {totalPages} ({allGroups.length} total records)
+                            Jump to page:
+                            <input
+                              type="number"
+                              min={1}
+                              max={totalPages}
+                              value={currentPage}
+                              onChange={(e) => {
+                                const page = parseInt(e.target.value);
+                                if (page >= 1 && page <= totalPages) {
+                                  setCurrentPage(page);
+                                }
+                              }}
+                              style={{
+                                marginLeft: '8px',
+                                width: '60px',
+                                padding: '4px 8px',
+                                border: '2px solid #d1fae5',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                textAlign: 'center'
+                              }}
+                            />
                           </div>
                         </div>
                       )}
