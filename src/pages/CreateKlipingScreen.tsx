@@ -59,6 +59,7 @@ const CreateKlipingScreen: React.FC = () => {
   const [savedPengamatans, setSavedPengamatans] = useState<PengamatanData[]>([]);
   const [usedPengamatanNumbers, setUsedPengamatanNumbers] = useState<string[]>([]);
   const [editingPengamatanIndex, setEditingPengamatanIndex] = useState<number | null>(null);
+  const [modifiedPengamatanKeys, setModifiedPengamatanKeys] = useState<Set<string>>(new Set());
 
   const [saving, setSaving] = useState(false);
   const [loadingEdit, setLoadingEdit] = useState(false);
@@ -114,6 +115,7 @@ const CreateKlipingScreen: React.FC = () => {
     setShowMesinFoto(false);
     setIsFlavorLocked(false);
     setMesinPhotoCounts({});
+    setModifiedPengamatanKeys(new Set());
 
     const records = await getKlipingRecords({
       plant,
@@ -330,6 +332,9 @@ const CreateKlipingScreen: React.FC = () => {
       alert('Minimal 1 mesin harus memiliki foto!');
       return;
     }
+
+    const pengamatanKey = `${pengamatan}_${flavor}`;
+    setModifiedPengamatanKeys(prev => new Set(prev).add(pengamatanKey));
 
     if (editingPengamatanIndex !== null) {
       const cleanedMesinFotos: MesinFotos = {};
@@ -658,11 +663,20 @@ const CreateKlipingScreen: React.FC = () => {
       const dateStr = `${day}${month}${year}`;
 
       console.log('Saving all pengamatans:', savedPengamatans);
+      console.log('Modified pengamatan keys:', Array.from(modifiedPengamatanKeys));
 
       for (const peng of savedPengamatans) {
+        const pengamatanKey = `${peng.number}_${peng.flavor}`;
+        const isModified = modifiedPengamatanKeys.has(pengamatanKey);
+
+        if (!isModified) {
+          console.log(`Skipping unmodified pengamatan ${peng.number}: ${peng.flavor}`);
+          continue;
+        }
+
         const idUnik = `${peng.flavor}${lineNumber}${regu}${shift}${dateStr}P${peng.number}`;
 
-        console.log(`Processing pengamatan ${peng.number} ${peng.flavor}:`, {
+        console.log(`Processing modified pengamatan ${peng.number} ${peng.flavor}:`, {
           mesins: peng.mesins,
           mesinFotos: Object.keys(peng.mesinFotos)
         });
