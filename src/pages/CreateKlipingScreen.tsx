@@ -60,6 +60,8 @@ const CreateKlipingScreen: React.FC = () => {
   const [usedPengamatanNumbers, setUsedPengamatanNumbers] = useState<string[]>([]);
   const [editingPengamatanIndex, setEditingPengamatanIndex] = useState<number | null>(null);
   const [modifiedPengamatanKeys, setModifiedPengamatanKeys] = useState<Set<string>>(new Set());
+  const [deletedPengamatanKeys, setDeletedPengamatanKeys] = useState<Set<string>>(new Set());
+  const [originalPengamatanKeys, setOriginalPengamatanKeys] = useState<Set<string>>(new Set());
 
   const [saving, setSaving] = useState(false);
   const [loadingEdit, setLoadingEdit] = useState(false);
@@ -116,6 +118,8 @@ const CreateKlipingScreen: React.FC = () => {
     setIsFlavorLocked(false);
     setMesinPhotoCounts({});
     setModifiedPengamatanKeys(new Set());
+    setDeletedPengamatanKeys(new Set());
+    setOriginalPengamatanKeys(new Set());
 
     const records = await getKlipingRecords({
       plant,
@@ -165,6 +169,9 @@ const CreateKlipingScreen: React.FC = () => {
     }));
     setSavedPengamatans(loadedPengamatans);
     setUsedPengamatanNumbers(loadedPengamatans.map(p => p.number));
+
+    const originalKeys = new Set(loadedPengamatans.map(p => `${p.number}_${p.flavor}`));
+    setOriginalPengamatanKeys(originalKeys);
 
     // Load photo counts in background (fast - just count, no photo data)
     loadedPengamatans.forEach(peng => {
@@ -624,6 +631,18 @@ const CreateKlipingScreen: React.FC = () => {
   const handleDeletePengamatan = (index: number) => {
     const peng = savedPengamatans[index];
     if (confirm(`Hapus Pengamatan ${peng.number}: ${peng.flavor}?`)) {
+      const pengamatanKey = `${peng.number}_${peng.flavor}`;
+
+      if (originalPengamatanKeys.has(pengamatanKey)) {
+        setDeletedPengamatanKeys(prev => new Set(prev).add(pengamatanKey));
+      }
+
+      setModifiedPengamatanKeys(prev => {
+        const updated = new Set(prev);
+        updated.delete(pengamatanKey);
+        return updated;
+      });
+
       setSavedPengamatans(prev => prev.filter((_, i) => i !== index));
       const remainingPengamatans = savedPengamatans.filter((_, i) => i !== index);
       const usedNumbers = remainingPengamatans.map(p => p.number);
@@ -664,6 +683,18 @@ const CreateKlipingScreen: React.FC = () => {
 
       console.log('Saving all pengamatans:', savedPengamatans);
       console.log('Modified pengamatan keys:', Array.from(modifiedPengamatanKeys));
+      console.log('Deleted pengamatan keys:', Array.from(deletedPengamatanKeys));
+
+      for (const deletedKey of deletedPengamatanKeys) {
+        const [number, flavor] = deletedKey.split('_');
+        const idUnik = `${flavor}${lineNumber}${regu}${shift}${dateStr}P${number}`;
+
+        console.log(`Deleting removed pengamatan ${number}: ${flavor} with id_unik: ${idUnik}`);
+        const deleteResult = await deleteKlipingRecordsByIdUnik(idUnik);
+        if (!deleteResult.success) {
+          console.error(`Failed to delete removed records: ${deleteResult.error}`);
+        }
+      }
 
       for (const peng of savedPengamatans) {
         const pengamatanKey = `${peng.number}_${peng.flavor}`;
