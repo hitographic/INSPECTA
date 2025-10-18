@@ -31,6 +31,7 @@ const KlipingRecordsScreen: React.FC = () => {
   const [tempLine, setTempLine] = useState('');
   const [tempRegu, setTempRegu] = useState('');
   const [tempShift, setTempShift] = useState('');
+  const [tempTanggal, setTempTanggal] = useState(new Date().toISOString().split('T')[0]);
 
   const [photoPreviewModal, setPhotoPreviewModal] = useState(false);
   const [previewPhotos, setPreviewPhotos] = useState<{ [key: string]: string }>({});
@@ -176,26 +177,13 @@ const KlipingRecordsScreen: React.FC = () => {
     setTempLine('');
     setTempRegu('');
     setTempShift('');
+    setTempTanggal(new Date().toISOString().split('T')[0]);
     setShowCreatePopup(true);
   };
 
   const handleConfirmCreate = async () => {
     if (!tempLine || !tempRegu || !tempShift) {
       alert('Harap pilih Line, Regu, dan Shift terlebih dahulu!');
-      return;
-    }
-
-    const today = new Date().toISOString().split('T')[0];
-
-    const existingRecord = records.find(r =>
-      r.tanggal === today &&
-      r.line === tempLine &&
-      r.regu === tempRegu &&
-      r.shift === tempShift
-    );
-
-    if (existingRecord) {
-      alert(`Data untuk Line ${tempLine}, Regu ${tempRegu}, Shift ${tempShift} pada tanggal hari ini sudah ada!\n\nSilakan edit data yang sudah ada atau pilih kombinasi Line, Regu, Shift yang berbeda.`);
       return;
     }
 
@@ -206,6 +194,7 @@ const KlipingRecordsScreen: React.FC = () => {
         line: tempLine,
         regu: tempRegu,
         shift: tempShift,
+        tanggal: tempTanggal,
       },
     });
   };
@@ -825,6 +814,7 @@ const KlipingRecordsScreen: React.FC = () => {
                             line: firstRecord.line,
                             regu: firstRecord.regu,
                             shift: firstRecord.shift,
+                            tanggal: firstRecord.tanggal,
                             sessionId: `${firstRecord.tanggal}_${firstRecord.line}_${firstRecord.regu}_${firstRecord.shift}`
                           }
                         })}
@@ -1142,6 +1132,24 @@ const KlipingRecordsScreen: React.FC = () => {
             <h2 style={{ fontSize: '24px', fontWeight: '700', marginBottom: '24px', color: '#1a202c' }}>
               Pilih Line, Regu, dan Shift
             </h2>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '12px', fontWeight: '600', color: '#2d3748' }}>
+                Tanggal
+              </label>
+              <input
+                type="date"
+                value={tempTanggal}
+                onChange={(e) => setTempTanggal(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  borderRadius: '12px',
+                  border: '2px solid #d1fae5',
+                  fontSize: '16px',
+                }}
+              />
+            </div>
 
             <div style={{ marginBottom: '20px' }}>
               <label style={{ display: 'block', marginBottom: '12px', fontWeight: '600', color: '#2d3748' }}>

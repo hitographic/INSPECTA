@@ -17,6 +17,7 @@ interface LocationState {
   line: string;
   regu: string;
   shift: string;
+  tanggal?: string;
   sessionId?: string;
 }
 
@@ -43,7 +44,7 @@ const CreateKlipingScreen: React.FC = () => {
   const [line] = useState(state?.line || 'Line 1');
   const [regu] = useState(state?.regu || 'A');
   const [shift] = useState(state?.shift || '1');
-  const [tanggal, setTanggal] = useState(new Date().toISOString().split('T')[0]);
+  const [tanggal, setTanggal] = useState(state?.tanggal || new Date().toISOString().split('T')[0]);
 
   const [pengamatan, setPengamatan] = useState('');
   const [flavor, setFlavor] = useState('');
@@ -84,6 +85,10 @@ const CreateKlipingScreen: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    loadExistingSession();
+  }, [tanggal]);
+
+  useEffect(() => {
     Object.keys(mesinFotos).forEach(mesin => {
       updatePhotoCount(mesin, mesinFotos[mesin]);
     });
@@ -101,7 +106,15 @@ const CreateKlipingScreen: React.FC = () => {
   }, [selectedMesin]);
 
   const loadExistingSession = async () => {
-    // Load metadata only (no photos) for fast initial load
+    setSavedPengamatans([]);
+    setUsedPengamatanNumbers([]);
+    setPengamatan('');
+    setFlavor('');
+    setMesinFotos({});
+    setShowMesinFoto(false);
+    setIsFlavorLocked(false);
+    setMesinPhotoCounts({});
+
     const records = await getKlipingRecords({
       plant,
       startDate: tanggal,
@@ -112,8 +125,6 @@ const CreateKlipingScreen: React.FC = () => {
     });
 
     if (records.length === 0) return;
-
-    setTanggal(records[0].tanggal);
 
     const pengamatanMap: { [key: string]: PengamatanData } = {};
 
@@ -816,11 +827,14 @@ const CreateKlipingScreen: React.FC = () => {
                 width: '100%',
                 padding: '14px',
                 borderRadius: '12px',
-                border: '1px solid #e2e8f0',
+                border: '2px solid #10b981',
                 fontSize: '16px',
-                background: '#f7fafc'
+                background: 'white'
               }}
             />
+            <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '6px', fontStyle: 'italic' }}>
+              💡 Ubah tanggal untuk melihat/edit data tanggal lain
+            </p>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '20px' }}>
