@@ -19,15 +19,17 @@ export default function RecordsScreen() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [showLinePopup, setShowLinePopup] = useState(false);
-  const { selectedPlant, setSelectedLine, currentUser } = useApp();
+  const { selectedPlant, setSelectedLine, currentUser, isLoading } = useApp();
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (isLoading) return;
+
     if (!currentUser) {
       navigate('/');
       return;
     }
-    
+
     if (!selectedPlant) {
       navigate('/plant-selection');
       return;
@@ -36,7 +38,7 @@ export default function RecordsScreen() {
     initDatabase().then(() => {
       loadRecords();
     });
-  }, [currentUser, selectedPlant, navigate]);
+  }, [currentUser, selectedPlant, navigate, isLoading]);
 
   useEffect(() => {
     filterRecords();
@@ -324,6 +326,16 @@ export default function RecordsScreen() {
     // Check if both photo timestamps exist (not just the photo URIs)
     return record.foto_sebelum_timestamp && record.foto_sesudah_timestamp;
   };
+
+  if (isLoading) {
+    return (
+      <div className="container">
+        <div className="loading">
+          <div className="spinner"></div>
+        </div>
+      </div>
+    );
+  }
 
   if (!currentUser || !selectedPlant) {
     return null;

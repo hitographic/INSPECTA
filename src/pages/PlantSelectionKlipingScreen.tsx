@@ -8,13 +8,23 @@ const PlantSelectionKlipingScreen: React.FC = () => {
   const [plants, setPlants] = useState<string[]>([]);
 
   useEffect(() => {
+    const currentUser = authService.getCurrentUser();
+    if (!currentUser) {
+      navigate('/');
+      return;
+    }
+
     const allowedPlants = authService.getAllowedPlants();
     setPlants(allowedPlants);
-  }, []);
+  }, [navigate]);
 
   const handlePlantSelect = (plant: string) => {
     navigate('/kliping-records', { state: { plant } });
   };
+
+  if (plants.length === 0) {
+    return null;
+  }
 
   return (
     <div

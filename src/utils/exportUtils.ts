@@ -3,6 +3,7 @@ import jsPDF from 'jspdf';
 import { SanitationRecord } from '../types/database';
 import { getRecordById } from './database';
 import { supabase } from './supabase';
+import { getAreas, getBagianByAreaName } from './masterData';
 
 // Convert base64 image to buffer for ExcelJS
 const base64ToBuffer = (base64: string): ArrayBuffer => {
@@ -72,27 +73,27 @@ const getPlantNumber = (plant: string): string => {
   return match ? match[1] : '1';
 };
 
-// Sort areas in specific order
-const sortAreasByOrder = (areas: string[]): string[] => {
-  const areaOrder = ['Silo', 'Mixer', 'Roll Press', 'Steambox', 'Cutter dan Folder', 'Fryer', 'Cooling Box', 'Packing'];
+// Sort areas by display_order from database
+const sortAreasByDisplayOrder = async (areaNames: string[]): Promise<string[]> => {
+  try {
+    const areas = await getAreas();
+    const areaOrderMap: { [name: string]: number } = {};
 
-  return areas.sort((a, b) => {
-    const indexA = areaOrder.indexOf(a);
-    const indexB = areaOrder.indexOf(b);
+    areas.forEach(area => {
+      areaOrderMap[area.name] = area.display_order;
+    });
 
-    // If both areas are in the order list, sort by their position
-    if (indexA !== -1 && indexB !== -1) {
-      return indexA - indexB;
-    }
-
-    // If only one is in the order list, it comes first
-    if (indexA !== -1) return -1;
-    if (indexB !== -1) return 1;
-
-    // If neither is in the order list, sort alphabetically
-    return a.localeCompare(b);
-  });
+    return areaNames.sort((a, b) => {
+      const orderA = areaOrderMap[a] ?? 999;
+      const orderB = areaOrderMap[b] ?? 999;
+      return orderA - orderB;
+    });
+  } catch (error) {
+    console.error('Error sorting areas:', error);
+    return areaNames.sort();
+  }
 };
+
 
 // Resize image for better performance
 const resizeImage = (base64: string, targetWidth: number = 150, targetHeight: number = 150): Promise<string> => {
@@ -237,9 +238,26 @@ export const exportToExcel = async (records: SanitationRecord[]): Promise<boolea
       }, {} as { [key: string]: SanitationRecord[] });
 
       let isFirstArea = true;
-      const sortedAreas = sortAreasByOrder(Object.keys(areaGroups));
+      const sortedAreas = await sortAreasByDisplayOrder(Object.keys(areaGroups));
       for (const area of sortedAreas) {
-        const areaRecords = areaGroups[area];
+        let areaRecords = areaGroups[area];
+
+        // Sort bagian within area by display_order
+        try {
+          const bagianList = await getBagianByAreaName(area);
+          const bagianOrderMap: { [name: string]: number } = {};
+          bagianList.forEach(b => {
+            bagianOrderMap[b.name] = b.display_order;
+          });
+
+          areaRecords = areaRecords.sort((a, b) => {
+            const orderA = bagianOrderMap[a.bagian] ?? 999;
+            const orderB = bagianOrderMap[b.bagian] ?? 999;
+            return orderA - orderB;
+          });
+        } catch (error) {
+          console.error('Error sorting bagian:', error);
+        }
         // Plant info (only for first area)
         if (isFirstArea) {
           worksheet.getCell(`A${currentRow}`).value = 'Pabrik';
@@ -572,9 +590,26 @@ export const exportToPDF = async (records: SanitationRecord[]): Promise<boolean>
       }, {} as { [key: string]: SanitationRecord[] });
 
       let isFirstArea = true;
-      const sortedAreasPDF = sortAreasByOrder(Object.keys(areaGroups));
+      const sortedAreasPDF = await sortAreasByDisplayOrder(Object.keys(areaGroups));
       for (const area of sortedAreasPDF) {
-        const areaRecords = areaGroups[area];
+        let areaRecords = areaGroups[area];
+
+        // Sort bagian within area by display_order
+        try {
+          const bagianList = await getBagianByAreaName(area);
+          const bagianOrderMap: { [name: string]: number } = {};
+          bagianList.forEach(b => {
+            bagianOrderMap[b.name] = b.display_order;
+          });
+
+          areaRecords = areaRecords.sort((a, b) => {
+            const orderA = bagianOrderMap[a.bagian] ?? 999;
+            const orderB = bagianOrderMap[b.bagian] ?? 999;
+            return orderA - orderB;
+          });
+        } catch (error) {
+          console.error('Error sorting bagian:', error);
+        }
 
         // Calculate space needed for Area + Week + Header + First Data Row
         const dataRowHeight = 50;

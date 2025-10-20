@@ -6,15 +6,15 @@ import { ArrowLeft, Database } from 'lucide-react';
 import { authService } from '../utils/authService';
 
 export default function PlantSelectionScreen() {
-  const { setSelectedPlant, currentUser } = useApp();
+  const { setSelectedPlant, currentUser, isLoading } = useApp();
   const navigate = useNavigate();
   const allowedPlants = authService.getAllowedPlants();
 
   React.useEffect(() => {
-    if (!currentUser) {
+    if (!isLoading && !currentUser) {
       navigate('/');
     }
-  }, [currentUser, navigate]);
+  }, [currentUser, isLoading, navigate]);
 
   const handlePlantSelect = (plant: string) => {
     setSelectedPlant(plant);
@@ -28,6 +28,16 @@ export default function PlantSelectionScreen() {
   const handleMasterData = () => {
     navigate('/master-data');
   };
+
+  if (isLoading) {
+    return (
+      <div className="container">
+        <div className="loading">
+          <div className="spinner"></div>
+        </div>
+      </div>
+    );
+  }
 
   if (!currentUser) {
     return null;

@@ -4,6 +4,7 @@ interface AppContextType {
   currentUser: string | null;
   selectedPlant: string | null;
   selectedLine: string | null;
+  isLoading: boolean;
   setCurrentUser: (user: string | null) => void;
   setSelectedPlant: (plant: string | null) => void;
   setSelectedLine: (line: string | null) => void;
@@ -16,6 +17,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [currentUser, setCurrentUser] = useState<string | null>(null);
   const [selectedPlant, setSelectedPlant] = useState<string | null>(null);
   const [selectedLine, setSelectedLine] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -34,6 +36,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
     if (savedPlant) setSelectedPlant(savedPlant);
     if (savedLine) setSelectedLine(savedLine);
+
+    setIsLoading(false);
   }, []);
 
   // Don't save currentUser to localStorage - authService handles this
@@ -67,6 +71,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       currentUser,
       selectedPlant,
       selectedLine,
+      isLoading,
       setCurrentUser,
       setSelectedPlant,
       setSelectedLine,

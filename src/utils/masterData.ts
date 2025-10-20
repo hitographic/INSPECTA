@@ -58,6 +58,25 @@ export const getBagianByArea = async (areaId: string): Promise<Bagian[]> => {
   }
 };
 
+export const getBagianByAreaName = async (areaName: string): Promise<Bagian[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('sanitation_bagian')
+      .select(`
+        *,
+        sanitation_areas!inner(name)
+      `)
+      .eq('sanitation_areas.name', areaName)
+      .order('display_order', { ascending: true });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching bagian by area name:', error);
+    return [];
+  }
+};
+
 export const getBagianForLine = async (lineNumber: string): Promise<{ [areaName: string]: Bagian[] }> => {
   try {
     const { data: bagianData, error: bagianError } = await supabase

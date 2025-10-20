@@ -43,7 +43,7 @@ const getIndonesiaDate = (): string => {
 };
 
 export default function CreateRecordScreen() {
-  const { selectedPlant, selectedLine, setSelectedLine, currentUser } = useApp();
+  const { selectedPlant, selectedLine, setSelectedLine, currentUser, isLoading } = useApp();
   const navigate = useNavigate();
   const [line, setLine] = useState(selectedLine || '');
   const [area, setArea] = useState('');
@@ -69,18 +69,20 @@ export default function CreateRecordScreen() {
   const [dynamicBagianByArea, setDynamicBagianByArea] = useState<{[key: string]: Bagian[]}>({});
   const [dynamicKeterangan, setDynamicKeterangan] = useState<{[key: string]: string}>({});
   const [useDynamicData, setUseDynamicData] = useState(false);
-  
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const cameraManager = useRef(new CameraManager());
   const uploadBeforeRef = useRef<HTMLInputElement>(null);
   const uploadAfterRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    if (isLoading) return;
+
     if (!currentUser) {
       navigate('/');
       return;
     }
-    
+
     if (!selectedPlant) {
       navigate('/plant-selection');
       return;
@@ -693,6 +695,16 @@ export default function CreateRecordScreen() {
       alert(`Gagal menyimpan semua record: ${errorMessage}`);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="container">
+        <div className="loading">
+          <div className="spinner"></div>
+        </div>
+      </div>
+    );
+  }
 
   if (!currentUser || !selectedPlant) {
     return null;
