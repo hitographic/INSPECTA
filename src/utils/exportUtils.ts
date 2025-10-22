@@ -110,9 +110,20 @@ const sortAreasByDisplayOrder = async (areaNames: string[]): Promise<string[]> =
 // Resize image for better performance with caching
 const imageCache = new Map<string, string>();
 
+// Generate unique hash for base64 string
+const hashBase64 = (str: string): string => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return hash.toString(36);
+};
+
 const resizeImage = (base64: string, targetWidth: number = 150, targetHeight: number = 150): Promise<string> => {
   return new Promise((resolve) => {
-    const cacheKey = `${base64.substring(0, 50)}_${targetWidth}_${targetHeight}`;
+    const cacheKey = `${hashBase64(base64)}_${targetWidth}_${targetHeight}`;
 
     if (imageCache.has(cacheKey)) {
       resolve(imageCache.get(cacheKey)!);

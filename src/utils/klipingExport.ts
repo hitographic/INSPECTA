@@ -47,6 +47,17 @@ const base64ToBuffer = (base64: string): ArrayBuffer => {
 // Image cache for better performance
 const imageResizeCache = new Map<string, ArrayBuffer>();
 
+// Generate unique hash for base64 string
+const hashBase64 = (str: string): string => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return hash.toString(36);
+};
+
 // Batch process images for better performance
 const processImagesInBatch = async (
   records: KlipingRecord[],
@@ -57,7 +68,7 @@ const processImagesInBatch = async (
     const fotoBase64 = (record as any)[fotoKey];
     if (fotoBase64) {
       try {
-        const cacheKey = `${fotoBase64.substring(0, 50)}_${fotoKey}`;
+        const cacheKey = `${hashBase64(fotoBase64)}_${fotoKey}`;
         if (imageResizeCache.has(cacheKey)) {
           imageMap.set(idx, imageResizeCache.get(cacheKey)!);
         } else {
