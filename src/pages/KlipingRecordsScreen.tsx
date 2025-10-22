@@ -3,10 +3,11 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Plus, FileDown, Trash2, Eye, X } from 'lucide-react';
 import { KlipingRecord } from '../types/database';
 import { getKlipingRecords, getKlipingRecordsWithPhotos, getKlipingRecordPhotos, countKlipingPhotos, REGU_OPTIONS, SHIFT_OPTIONS, FOTO_TYPES } from '../utils/klipingDatabase';
-import { exportKlipingToExcel, exportKlipingToPDF, exportAllKlipingToZip } from '../utils/klipingExport';
+import { exportKlipingToExcel, exportKlipingToPDF, exportAllKlipingSequential } from '../utils/klipingExport';
 import { supabase } from '../utils/supabase';
 import { PLANTS } from '../constants/AppConstants';
 import { getUserPermissions } from '../utils/authService';
+import { requestQueue } from '../utils/requestQueue';
 
 interface LocationState {
   plant: string;
@@ -50,6 +51,12 @@ const KlipingRecordsScreen: React.FC = () => {
   useEffect(() => {
     loadRecords();
     checkPermissions();
+
+    return () => {
+      console.log('[KLIPING SCREEN] Cleanup: aborting pending requests');
+      requestQueue.abort();
+      requestQueue.reset();
+    };
   }, [plant]);
 
   useEffect(() => {
@@ -216,22 +223,45 @@ const KlipingRecordsScreen: React.FC = () => {
         plant,
         startDate,
         endDate,
-        line: selectedLines.length === 1 ? selectedLines[0] : undefined
+        line: selectedLines.length === 1 ? selectedLines[0] : undefined,
+        regu: selectedRegus.length === 1 ? selectedRegus[0] : undefined,
+        shift: selectedShifts.length === 1 ? selectedShifts[0] : undefined
       });
 
-      const sessions = groupRecordsBySession(recordsWithPhotos);
-      console.log(`[EXPORT] Loaded ${recordsWithPhotos.length} records in ${(Date.now() - startTime) / 1000}s`);
+      console.log(`[EXPORT] Fetched ${recordsWithPhotos.length} records from database`);
+
+      let filteredForExport = recordsWithPhotos;
+
+      if (selectedLines.length > 0) {
+        filteredForExport = filteredForExport.filter(r => selectedLines.includes(r.line));
+      }
+      if (selectedRegus.length > 0) {
+        filteredForExport = filteredForExport.filter(r => selectedRegus.includes(r.regu));
+      }
+      if (selectedShifts.length > 0) {
+        filteredForExport = filteredForExport.filter(r => selectedShifts.includes(r.shift));
+      }
+
+      console.log(`[EXPORT] After client-side filtering: ${filteredForExport.length} records`);
+
+      if (filteredForExport.length === 0) {
+        alert('Tidak ada data yang sesuai dengan filter untuk di-export');
+        return;
+      }
+
+      const sessions = groupRecordsBySession(filteredForExport);
+      console.log(`[EXPORT] Loaded ${filteredForExport.length} records in ${(Date.now() - startTime) / 1000}s`);
 
       if (sessions.length > 1) {
-        const success = await exportAllKlipingToZip(recordsWithPhotos, 'excel');
+        const success = await exportAllKlipingSequential(filteredForExport, 'excel');
         const duration = ((Date.now() - startTime) / 1000).toFixed(1);
         if (success) {
-          alert(`Export berhasil! ${sessions.length} file Excel dalam ZIP (${duration} detik)`);
+          alert(`Export berhasil! ${sessions.length} file Excel (${duration} detik)`);
         } else {
           alert('Export gagal!');
         }
       } else {
-        const success = await exportKlipingToExcel(recordsWithPhotos);
+        const success = await exportKlipingToExcel(filteredForExport);
         const duration = ((Date.now() - startTime) / 1000).toFixed(1);
         if (success) {
           alert(`Export Excel berhasil! (${duration} detik)`);
@@ -259,22 +289,45 @@ const KlipingRecordsScreen: React.FC = () => {
         plant,
         startDate,
         endDate,
-        line: selectedLines.length === 1 ? selectedLines[0] : undefined
+        line: selectedLines.length === 1 ? selectedLines[0] : undefined,
+        regu: selectedRegus.length === 1 ? selectedRegus[0] : undefined,
+        shift: selectedShifts.length === 1 ? selectedShifts[0] : undefined
       });
 
-      const sessions = groupRecordsBySession(recordsWithPhotos);
-      console.log(`[EXPORT] Loaded ${recordsWithPhotos.length} records in ${(Date.now() - startTime) / 1000}s`);
+      console.log(`[EXPORT] Fetched ${recordsWithPhotos.length} records from database`);
+
+      let filteredForExport = recordsWithPhotos;
+
+      if (selectedLines.length > 0) {
+        filteredForExport = filteredForExport.filter(r => selectedLines.includes(r.line));
+      }
+      if (selectedRegus.length > 0) {
+        filteredForExport = filteredForExport.filter(r => selectedRegus.includes(r.regu));
+      }
+      if (selectedShifts.length > 0) {
+        filteredForExport = filteredForExport.filter(r => selectedShifts.includes(r.shift));
+      }
+
+      console.log(`[EXPORT] After client-side filtering: ${filteredForExport.length} records`);
+
+      if (filteredForExport.length === 0) {
+        alert('Tidak ada data yang sesuai dengan filter untuk di-export');
+        return;
+      }
+
+      const sessions = groupRecordsBySession(filteredForExport);
+      console.log(`[EXPORT] Loaded ${filteredForExport.length} records in ${(Date.now() - startTime) / 1000}s`);
 
       if (sessions.length > 1) {
-        const success = await exportAllKlipingToZip(recordsWithPhotos, 'pdf');
+        const success = await exportAllKlipingSequential(filteredForExport, 'pdf');
         const duration = ((Date.now() - startTime) / 1000).toFixed(1);
         if (success) {
-          alert(`Export berhasil! ${sessions.length} file PDF dalam ZIP (${duration} detik)`);
+          alert(`Export berhasil! ${sessions.length} file PDF (${duration} detik)`);
         } else {
           alert('Export gagal!');
         }
       } else {
-        const success = await exportKlipingToPDF(recordsWithPhotos);
+        const success = await exportKlipingToPDF(filteredForExport);
         const duration = ((Date.now() - startTime) / 1000).toFixed(1);
         if (success) {
           alert(`Export PDF berhasil! (${duration} detik)`);

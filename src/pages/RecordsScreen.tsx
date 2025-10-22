@@ -9,6 +9,7 @@ import { PLANTS, AREAS, BAGIAN_BY_AREA } from '../constants/AppConstants';
 import { ArrowLeft, Plus, FileEdit as Edit3, Trash2, FileText, Settings } from 'lucide-react';
 import { X } from 'lucide-react';
 import { authService } from '../utils/authService';
+import { requestQueue } from '../utils/requestQueue';
 
 export default function RecordsScreen() {
   const [records, setRecords] = useState<SanitationRecord[]>([]);
@@ -38,6 +39,12 @@ export default function RecordsScreen() {
     initDatabase().then(() => {
       loadRecords();
     });
+
+    return () => {
+      console.log('[RECORDS SCREEN] Cleanup: aborting pending requests');
+      requestQueue.abort();
+      requestQueue.reset();
+    };
   }, [currentUser, selectedPlant, navigate, isLoading]);
 
   useEffect(() => {

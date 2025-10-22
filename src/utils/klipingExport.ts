@@ -1,7 +1,30 @@
 import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
-import JSZip from 'jszip';
 import { KlipingRecord } from '../types/database';
+import { supabase } from './supabase';
+import { requestQueue } from './requestQueue';
+
+const fetchRecordPhotos = async (recordId: number): Promise<any> => {
+  try {
+    const result = await requestQueue.add(async () => {
+      return await supabase
+        .from('kliping_records')
+        .select('Foto_Etiket, Foto_Mesin_1, Foto_Mesin_2, Foto_Mesin_3, Foto_Mesin_4, Foto_Mesin_5, Foto_Mesin_6, Foto_Mesin_7')
+        .eq('id', recordId)
+        .maybeSingle();
+    });
+
+    if (result.error) {
+      console.error(`[EXPORT] Error fetching photos for record ${recordId}:`, result.error);
+      return {};
+    }
+
+    return result.data || {};
+  } catch (error) {
+    console.error(`[EXPORT] Exception fetching photos for record ${recordId}:`, error);
+    return {};
+  }
+};
 
 const formatIndonesianDate = (dateString: string): string => {
   const months = [
@@ -44,7 +67,7 @@ const base64ToBuffer = (base64: string): ArrayBuffer => {
   return bytes.buffer;
 };
 
-const resizeAndCompressImage = (base64: string, maxWidth: number = 400, maxHeight: number = 400): Promise<string> => {
+const resizeAndCompressImage = (base64: string, maxWidth: number = 500, maxHeight: number = 500, quality: number = 0.92): Promise<string> => {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -78,7 +101,7 @@ const resizeAndCompressImage = (base64: string, maxWidth: number = 400, maxHeigh
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(img, 0, 0, width, height);
 
-      const compressed = canvas.toDataURL('image/jpeg', 0.88);
+      const compressed = canvas.toDataURL('image/jpeg', quality);
       resolve(compressed);
     };
     img.onerror = () => resolve(base64);
@@ -126,11 +149,11 @@ const processImagesInBatch = async (
       const fotoBase64 = (record as any)[fotoKey];
       if (fotoBase64) {
         try {
-          const cacheKey = `${hashBase64(fotoBase64)}_${fotoKey}_compressed`;
+          const cacheKey = `${hashBase64(fotoBase64)}_${fotoKey}`;
           if (imageResizeCache.has(cacheKey)) {
             imageMap.set(idx, imageResizeCache.get(cacheKey)!);
           } else {
-            const compressed = await resizeAndCompressImage(fotoBase64, 400, 400);
+            const compressed = await resizeAndCompressImage(fotoBase64, 500, 500, 0.90);
             const imageBuffer = base64ToBuffer(compressed);
             addToCache(cacheKey, imageBuffer);
             imageMap.set(idx, imageBuffer);
@@ -295,9 +318,18 @@ export const exportKlipingToExcel = async (records: KlipingRecord[]): Promise<bo
 
     let dataRow = headerRow + 3;
 
+    console.log('[EXPORT] Fetching photos for records...');
+    const recordsWithPhotos = await Promise.all(
+      sortedRecords.map(async (record) => {
+        const photos = await fetchRecordPhotos(record.id!);
+        return { ...record, ...photos };
+      })
+    );
+    console.log('[EXPORT] Photos fetched, processing images...');
+
     // Pre-process all images in batch for better performance
     const imageProcessingPromises = FOTO_TYPES.map(fotoType =>
-      processImagesInBatch(sortedRecords, fotoType.key)
+      processImagesInBatch(recordsWithPhotos, fotoType.key)
     );
     const processedImages = await Promise.all(imageProcessingPromises);
 
@@ -320,7 +352,7 @@ export const exportKlipingToExcel = async (records: KlipingRecord[]): Promise<bo
       };
 
       colIndex = 2;
-      sortedRecords.forEach((_record, recordIdx) => {
+      recordsWithPhotos.forEach((_record, recordIdx) => {
         const cell = worksheet.getCell(dataRow, colIndex);
         cell.border = {
           top: { style: 'thin' },
@@ -679,9 +711,18 @@ export const exportKlipingToPDF = async (records: KlipingRecord[]): Promise<bool
     pdf.text(firstRecord.created_by || 'N/A', valueX, yPosition);
     yPosition += 10;
 
+    console.log('[PDF EXPORT] Fetching photos for records...');
+    const recordsWithPhotos = await Promise.all(
+      sortedRecords.map(async (record) => {
+        const photos = await fetchRecordPhotos(record.id!);
+        return { ...record, ...photos };
+      })
+    );
+    console.log('[PDF EXPORT] Photos fetched, generating PDF...');
+
     const labelColumnWidth = 45;
     const availableWidth = pageWidth - 2 * margin - labelColumnWidth;
-    const cellWidth = availableWidth / sortedRecords.length;
+    const cellWidth = availableWidth / recordsWithPhotos.length;
 
     pdf.setDrawColor(0);
     pdf.setLineWidth(0.3);
@@ -696,7 +737,7 @@ export const exportKlipingToPDF = async (records: KlipingRecord[]): Promise<bool
     let xPosition = margin + labelColumnWidth;
 
     const pengamatanGroups: { [key: string]: KlipingRecord[] } = {};
-    sortedRecords.forEach(record => {
+    recordsWithPhotos.forEach(record => {
       const key = record.Pengamatan_ke || '0';
       if (!pengamatanGroups[key]) {
         pengamatanGroups[key] = [];
@@ -759,7 +800,7 @@ export const exportKlipingToPDF = async (records: KlipingRecord[]): Promise<bool
 
     for (const fotoType of FOTO_TYPES) {
       let hasFoto = false;
-      sortedRecords.forEach(record => {
+      recordsWithPhotos.forEach(record => {
         if ((record as any)[fotoType.key]) {
           hasFoto = true;
         }
@@ -783,7 +824,7 @@ export const exportKlipingToPDF = async (records: KlipingRecord[]): Promise<bool
 
       xPosition = margin + labelColumnWidth;
 
-      const imagePromises = sortedRecords.map(async (record) => {
+      const imagePromises = recordsWithPhotos.map(async (record) => {
         const fotoBase64 = (record as any)[fotoType.key];
         if (fotoBase64) {
           return await resizeAndCompressImage(fotoBase64, 400, 400);
@@ -792,7 +833,7 @@ export const exportKlipingToPDF = async (records: KlipingRecord[]): Promise<bool
       });
       const compressedImages = await Promise.all(imagePromises);
 
-      sortedRecords.forEach((_record, idx) => {
+      recordsWithPhotos.forEach((_record, idx) => {
         const fotoBase64 = compressedImages[idx];
 
         pdf.setDrawColor(0);
@@ -858,7 +899,7 @@ const groupRecordsBySession = (records: KlipingRecord[]): GroupedRecords => {
   return grouped;
 };
 
-export const exportAllKlipingToZip = async (
+export const exportAllKlipingSequential = async (
   records: KlipingRecord[],
   format: 'excel' | 'pdf'
 ): Promise<boolean> => {
@@ -876,10 +917,17 @@ export const exportAllKlipingToZip = async (
       return false;
     }
 
-    console.log(`[EXPORT] Starting export of ${sessionKeys.length} sessions...`);
+    console.log(`[EXPORT] Starting sequential export of ${sessionKeys.length} files...`);
+    console.log(`[EXPORT] Session keys:`, sessionKeys);
 
-    const zip = new JSZip();
-    let filesAdded = 0;
+    const confirmed = confirm(`Akan mendownload ${sessionKeys.length} file ${format.toUpperCase()} secara berurutan.\n\nBrowser mungkin akan meminta izin untuk multiple downloads.\nSilahkan klik "Allow" atau "Izinkan".\n\nLanjutkan?`);
+
+    if (!confirmed) {
+      console.log('[EXPORT] User cancelled export');
+      return false;
+    }
+
+    let filesDownloaded = 0;
     const errors: string[] = [];
 
     for (let i = 0; i < sessionKeys.length; i++) {
@@ -892,61 +940,87 @@ export const exportAllKlipingToZip = async (
 
       try {
         if (format === 'excel') {
-          console.log(`[EXPORT] Generating Excel buffer for ${fileName}...`);
+          console.log(`[EXPORT] Generating Excel for ${fileName}...`);
           const buffer = await generateExcelBuffer(sessionRecords);
-          console.log(`[EXPORT] Excel buffer generated, size: ${buffer.byteLength} bytes`);
-          zip.file(`${fileName}.xlsx`, buffer);
-          filesAdded++;
-          console.log(`[EXPORT] Added ${fileName}.xlsx to ZIP`);
+          console.log(`[EXPORT] Buffer size: ${buffer.byteLength} bytes`);
+
+          const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+          console.log(`[EXPORT] Blob created, size: ${blob.size} bytes`);
+
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `${fileName}.xlsx`;
+          link.style.display = 'none';
+          document.body.appendChild(link);
+
+          console.log(`[EXPORT] Triggering download for ${fileName}.xlsx`);
+          link.click();
+
+          await new Promise(resolve => setTimeout(resolve, 200));
+
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+
+          filesDownloaded++;
+          console.log(`[EXPORT] Successfully downloaded ${fileName}.xlsx (${i + 1}/${sessionKeys.length})`);
         } else if (format === 'pdf') {
-          console.log(`[EXPORT] Generating PDF blob for ${fileName}...`);
+          console.log(`[EXPORT] Generating PDF for ${fileName}...`);
           const pdfBlob = await generatePDFBlob(sessionRecords);
-          console.log(`[EXPORT] PDF blob generated, size: ${pdfBlob.size} bytes`);
-          zip.file(`${fileName}.pdf`, pdfBlob);
-          filesAdded++;
-          console.log(`[EXPORT] Added ${fileName}.pdf to ZIP`);
+          console.log(`[EXPORT] PDF blob created, size: ${pdfBlob.size} bytes`);
+
+          const url = window.URL.createObjectURL(pdfBlob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `${fileName}.pdf`;
+          link.style.display = 'none';
+          document.body.appendChild(link);
+
+          console.log(`[EXPORT] Triggering download for ${fileName}.pdf`);
+          link.click();
+
+          await new Promise(resolve => setTimeout(resolve, 200));
+
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+
+          filesDownloaded++;
+          console.log(`[EXPORT] Successfully downloaded ${fileName}.pdf (${i + 1}/${sessionKeys.length})`);
         }
 
-        if (i % 3 === 0 && i > 0) {
-          console.log(`[EXPORT] Pausing to clear memory after ${i + 1} files...`);
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
+        imageResizeCache.clear();
+        console.log(`[EXPORT] Cache cleared, processing next file...`);
       } catch (error) {
-        const errorMsg = `Error pada ${fileName}: ${error instanceof Error ? error.message : String(error)}`;
-        console.error(`[EXPORT] ${errorMsg}`, error);
+        const errorMsg = `${fileName}: ${error instanceof Error ? error.message : String(error)}`;
+        console.error(`[EXPORT] Error processing file ${i + 1}:`, error);
+        console.error(`[EXPORT] Error details:`, {
+          fileName,
+          format,
+          recordCount: sessionRecords.length,
+          error: error
+        });
         errors.push(errorMsg);
+
+        alert(`Error saat memproses file ${i + 1}/${sessionKeys.length}:\n${errorMsg}\n\nMelanjutkan ke file berikutnya...`);
       }
     }
 
-    if (filesAdded === 0) {
+    if (filesDownloaded === 0) {
       const errorDetails = errors.length > 0 ? `\n\nDetail error:\n${errors.join('\n')}` : '';
-      alert(`Gagal membuat file untuk diekspor.${errorDetails}`);
+      alert(`Gagal mendownload file.${errorDetails}`);
       return false;
     }
 
-    console.log(`[EXPORT] Generating ZIP with ${filesAdded} files...`);
-    const zipBlob = await zip.generateAsync({
-      type: 'blob',
-      compression: 'DEFLATE',
-      compressionOptions: { level: 6 }
-    });
-    console.log(`[EXPORT] ZIP size: ${(zipBlob.size / 1024 / 1024).toFixed(2)} MB`);
-
-    const url = window.URL.createObjectURL(zipBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Kliping_Records_${new Date().toISOString().split('T')[0]}.zip`;
-    link.click();
-    window.URL.revokeObjectURL(url);
-
     if (errors.length > 0) {
-      alert(`Export selesai dengan ${filesAdded} file berhasil dan ${errors.length} file gagal.\n\nFile yang gagal:\n${errors.join('\n')}`);
+      alert(`Download selesai!\n\n✅ ${filesDownloaded} file berhasil\n❌ ${errors.length} file gagal\n\nFile yang gagal:\n${errors.join('\n')}`);
+    } else {
+      alert(`✅ Download selesai! ${filesDownloaded} file berhasil terdownload.`);
     }
 
     return true;
   } catch (error) {
-    console.error('[EXPORT] Fatal error exporting to ZIP:', error);
-    alert(`Gagal mengekspor data ke ZIP: ${error instanceof Error ? error.message : String(error)}`);
+    console.error('[EXPORT] Fatal error:', error);
+    alert(`Gagal mengekspor data: ${error instanceof Error ? error.message : String(error)}`);
     return false;
   }
 };
@@ -1029,9 +1103,18 @@ const generatePDFBlob = async (records: KlipingRecord[]): Promise<Blob> => {
   pdf.text(firstRecord.created_by || 'N/A', valueX, yPosition);
   yPosition += 10;
 
+  console.log('[PDF BLOB] Fetching photos for records...');
+  const recordsWithPhotos = await Promise.all(
+    sortedRecords.map(async (record) => {
+      const photos = await fetchRecordPhotos(record.id!);
+      return { ...record, ...photos };
+    })
+  );
+  console.log('[PDF BLOB] Photos fetched, generating PDF...');
+
   const labelColumnWidth = 45;
   const availableWidth = pageWidth - 2 * margin - labelColumnWidth;
-  const cellWidth = availableWidth / sortedRecords.length;
+  const cellWidth = availableWidth / recordsWithPhotos.length;
 
   pdf.setDrawColor(0);
   pdf.setLineWidth(0.3);
@@ -1046,7 +1129,7 @@ const generatePDFBlob = async (records: KlipingRecord[]): Promise<Blob> => {
   let xPosition = margin + labelColumnWidth;
 
   const pengamatanGroups: { [key: string]: KlipingRecord[] } = {};
-  sortedRecords.forEach(record => {
+  recordsWithPhotos.forEach(record => {
     const key = record.Pengamatan_ke || '0';
     if (!pengamatanGroups[key]) {
       pengamatanGroups[key] = [];
@@ -1109,7 +1192,7 @@ const generatePDFBlob = async (records: KlipingRecord[]): Promise<Blob> => {
 
   for (const fotoType of FOTO_TYPES) {
     let hasFoto = false;
-    sortedRecords.forEach(record => {
+    recordsWithPhotos.forEach(record => {
       if ((record as any)[fotoType.key]) {
         hasFoto = true;
       }
@@ -1133,7 +1216,7 @@ const generatePDFBlob = async (records: KlipingRecord[]): Promise<Blob> => {
 
     xPosition = margin + labelColumnWidth;
 
-    const imagePromises2 = sortedRecords.map(async (record) => {
+    const imagePromises2 = recordsWithPhotos.map(async (record) => {
       const fotoBase64 = (record as any)[fotoType.key];
       if (fotoBase64) {
         return await resizeAndCompressImage(fotoBase64, 400, 400);
@@ -1142,7 +1225,7 @@ const generatePDFBlob = async (records: KlipingRecord[]): Promise<Blob> => {
     });
     const compressedImages2 = await Promise.all(imagePromises2);
 
-    sortedRecords.forEach((_record, idx) => {
+    recordsWithPhotos.forEach((_record, idx) => {
       const fotoBase64 = compressedImages2[idx];
 
       pdf.setDrawColor(0);

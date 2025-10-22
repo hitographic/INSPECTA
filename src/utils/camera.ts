@@ -151,7 +151,7 @@ export class CameraManager {
       );
 
       // Convert to base64 with good quality (no timestamp yet)
-      const dataURL = canvas.toDataURL('image/jpeg', 0.8);
+      const dataURL = canvas.toDataURL('image/jpeg', 0.85);
       
       if (dataURL === 'data:,' || dataURL.length < 100) {
         console.error('Canvas appears to be empty or invalid');
@@ -219,7 +219,7 @@ export class CameraManager {
               );
 
               // No timestamp overlay - will be added on save
-              const dataURL = canvas.toDataURL('image/jpeg', 0.8);
+              const dataURL = canvas.toDataURL('image/jpeg', 0.85);
               resolve(dataURL);
             } catch (error) {
               console.error('Error processing image:', error);

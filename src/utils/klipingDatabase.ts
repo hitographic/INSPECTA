@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { KlipingRecord } from '../types/database';
+import { requestQueue } from './requestQueue';
 
 export const insertKlipingRecord = async (record: KlipingRecord, skipDuplicateCheck: boolean = false): Promise<{ success: boolean; id?: number; error?: string; skipped?: boolean }> => {
   try {
@@ -233,47 +234,49 @@ export const getKlipingRecordsWithPhotos = async (filters?: {
   shift?: string;
 }): Promise<KlipingRecord[]> => {
   try {
-    console.log('[KLIPING] Fetching records WITH PHOTOS with filters:', filters);
+    console.log('[KLIPING] Fetching records metadata (photos loaded on-demand) with filters:', filters);
 
-    const BATCH_SIZE = 20;
+    const BATCH_SIZE = 50;
     let allRecords: KlipingRecord[] = [];
     let offset = 0;
     let hasMore = true;
 
     while (hasMore) {
-      console.log(`[KLIPING] Fetching batch starting at offset ${offset}...`);
+      console.log(`[KLIPING] Fetching batch ${Math.floor(offset / BATCH_SIZE) + 1} starting at offset ${offset}...`);
 
-      let query = supabase
-        .from('kliping_records')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .range(offset, offset + BATCH_SIZE - 1);
+      const { data, error } = await requestQueue.add(async () => {
+        let query = supabase
+          .from('kliping_records')
+          .select('id, id_unik, plant, tanggal, line, regu, shift, Flavor, Pengamatan_ke, Mesin, created_by, created_at, updated_at, is_complete, pengamatan_timestamp')
+          .order('created_at', { ascending: false })
+          .range(offset, offset + BATCH_SIZE - 1);
 
-      if (filters?.plant) {
-        query = query.eq('plant', filters.plant);
-      }
+        if (filters?.plant) {
+          query = query.eq('plant', filters.plant);
+        }
 
-      if (filters?.startDate) {
-        query = query.gte('tanggal', filters.startDate);
-      }
+        if (filters?.startDate) {
+          query = query.gte('tanggal', filters.startDate);
+        }
 
-      if (filters?.endDate) {
-        query = query.lte('tanggal', filters.endDate);
-      }
+        if (filters?.endDate) {
+          query = query.lte('tanggal', filters.endDate);
+        }
 
-      if (filters?.line) {
-        query = query.eq('line', filters.line);
-      }
+        if (filters?.line) {
+          query = query.eq('line', filters.line);
+        }
 
-      if (filters?.regu) {
-        query = query.eq('regu', filters.regu);
-      }
+        if (filters?.regu) {
+          query = query.eq('regu', filters.regu);
+        }
 
-      if (filters?.shift) {
-        query = query.eq('shift', filters.shift);
-      }
+        if (filters?.shift) {
+          query = query.eq('shift', filters.shift);
+        }
 
-      const { data, error } = await query;
+        return await query;
+      });
 
       if (error) {
         console.error('[KLIPING] Error fetching batch:', error);
@@ -283,7 +286,7 @@ export const getKlipingRecordsWithPhotos = async (filters?: {
       if (!data || data.length === 0) {
         hasMore = false;
       } else {
-        console.log(`[KLIPING] Fetched ${data.length} records in this batch`);
+        console.log(`[KLIPING] Fetched ${data.length} records in this batch, total so far: ${allRecords.length + data.length}`);
         allRecords = allRecords.concat(data);
         offset += BATCH_SIZE;
 
