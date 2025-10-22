@@ -44,6 +44,36 @@ const base64ToBuffer = (base64: string): ArrayBuffer => {
   return bytes.buffer;
 };
 
+// Image cache for better performance
+const imageResizeCache = new Map<string, ArrayBuffer>();
+
+// Batch process images for better performance
+const processImagesInBatch = async (
+  records: KlipingRecord[],
+  fotoKey: string
+): Promise<Map<number, ArrayBuffer>> => {
+  const imageMap = new Map<number, ArrayBuffer>();
+  const promises = records.map(async (record, idx) => {
+    const fotoBase64 = (record as any)[fotoKey];
+    if (fotoBase64) {
+      try {
+        const cacheKey = `${fotoBase64.substring(0, 50)}_${fotoKey}`;
+        if (imageResizeCache.has(cacheKey)) {
+          imageMap.set(idx, imageResizeCache.get(cacheKey)!);
+        } else {
+          const imageBuffer = base64ToBuffer(fotoBase64);
+          imageResizeCache.set(cacheKey, imageBuffer);
+          imageMap.set(idx, imageBuffer);
+        }
+      } catch (error) {
+        console.error(`Error processing image for ${fotoKey}:`, error);
+      }
+    }
+  });
+  await Promise.all(promises);
+  return imageMap;
+};
+
 const sortMesinNumber = (mesin: string): number => {
   const match = mesin.match(/\d+/);
   return match ? parseInt(match[0]) : 0;
@@ -193,15 +223,17 @@ export const exportKlipingToExcel = async (records: KlipingRecord[]): Promise<bo
 
     let dataRow = headerRow + 3;
 
-    for (const fotoType of FOTO_TYPES) {
-      let hasFoto = false;
-      sortedRecords.forEach(record => {
-        if ((record as any)[fotoType.key]) {
-          hasFoto = true;
-        }
-      });
+    // Pre-process all images in batch for better performance
+    const imageProcessingPromises = FOTO_TYPES.map(fotoType =>
+      processImagesInBatch(sortedRecords, fotoType.key)
+    );
+    const processedImages = await Promise.all(imageProcessingPromises);
 
-      if (!hasFoto) continue;
+    for (let fotoIdx = 0; fotoIdx < FOTO_TYPES.length; fotoIdx++) {
+      const fotoType = FOTO_TYPES[fotoIdx];
+      const imageMap = processedImages[fotoIdx];
+
+      if (imageMap.size === 0) continue;
 
       const labelCell = worksheet.getCell(dataRow, 1);
       labelCell.value = fotoType.label;
@@ -216,8 +248,7 @@ export const exportKlipingToExcel = async (records: KlipingRecord[]): Promise<bo
       };
 
       colIndex = 2;
-      sortedRecords.forEach((record) => {
-        const fotoBase64 = (record as any)[fotoType.key];
+      sortedRecords.forEach((_record, recordIdx) => {
         const cell = worksheet.getCell(dataRow, colIndex);
         cell.border = {
           top: { style: 'thin' },
@@ -226,9 +257,9 @@ export const exportKlipingToExcel = async (records: KlipingRecord[]): Promise<bo
           bottom: { style: 'thin' }
         };
 
-        if (fotoBase64) {
+        const imageBuffer = imageMap.get(recordIdx);
+        if (imageBuffer) {
           try {
-            const imageBuffer = base64ToBuffer(fotoBase64);
             const imageId = workbook.addImage({
               buffer: imageBuffer,
               extension: 'jpeg',
@@ -419,15 +450,17 @@ const generateExcelBuffer = async (records: KlipingRecord[]): Promise<ArrayBuffe
 
   let dataRow = headerRow + 3;
 
-  for (const fotoType of FOTO_TYPES) {
-    let hasFoto = false;
-    sortedRecords.forEach(record => {
-      if ((record as any)[fotoType.key]) {
-        hasFoto = true;
-      }
-    });
+  // Pre-process all images in batch for better performance
+  const imageProcessingPromises2 = FOTO_TYPES.map(fotoType =>
+    processImagesInBatch(sortedRecords, fotoType.key)
+  );
+  const processedImages2 = await Promise.all(imageProcessingPromises2);
 
-    if (!hasFoto) continue;
+  for (let fotoIdx = 0; fotoIdx < FOTO_TYPES.length; fotoIdx++) {
+    const fotoType = FOTO_TYPES[fotoIdx];
+    const imageMap = processedImages2[fotoIdx];
+
+    if (imageMap.size === 0) continue;
 
     const labelCell = worksheet.getCell(dataRow, 1);
     labelCell.value = fotoType.label;
@@ -442,8 +475,7 @@ const generateExcelBuffer = async (records: KlipingRecord[]): Promise<ArrayBuffe
     };
 
     colIndex = 2;
-    sortedRecords.forEach((record) => {
-      const fotoBase64 = (record as any)[fotoType.key];
+    sortedRecords.forEach((_record, recordIdx) => {
       const cell = worksheet.getCell(dataRow, colIndex);
       cell.border = {
         top: { style: 'thin' },
@@ -452,9 +484,9 @@ const generateExcelBuffer = async (records: KlipingRecord[]): Promise<ArrayBuffe
         bottom: { style: 'thin' }
       };
 
-      if (fotoBase64) {
+      const imageBuffer = imageMap.get(recordIdx);
+      if (imageBuffer) {
         try {
-          const imageBuffer = base64ToBuffer(fotoBase64);
           const imageId = workbook.addImage({
             buffer: imageBuffer,
             extension: 'jpeg',

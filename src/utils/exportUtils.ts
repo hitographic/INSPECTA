@@ -18,12 +18,24 @@ const base64ToBuffer = (base64: string): ArrayBuffer => {
   return bytes.buffer;
 };
 
-// Calculate week number from date
+// Calculate week number from date (ISO 8601 - Monday as first day of week)
 const getWeekInfo = (dateString: string): string => {
   const date = new Date(dateString);
-  const startOfYear = new Date(date.getFullYear(), 0, 1);
-  const pastDaysOfYear = (date.getTime() - startOfYear.getTime()) / 86400000;
-  const weekNumber = Math.ceil((pastDaysOfYear + startOfYear.getDay() + 1) / 7);
+
+  // Get the Monday of the week containing Jan 4th (ISO 8601 week 1)
+  const jan4 = new Date(date.getFullYear(), 0, 4);
+  const jan4Day = jan4.getDay() || 7; // Convert Sunday (0) to 7
+  const jan4Monday = new Date(jan4);
+  jan4Monday.setDate(jan4.getDate() - jan4Day + 1);
+
+  // Get the Monday of the current week
+  const currentDay = date.getDay() || 7; // Convert Sunday (0) to 7
+  const currentMonday = new Date(date);
+  currentMonday.setDate(date.getDate() - currentDay + 1);
+
+  // Calculate week number
+  const diffInMs = currentMonday.getTime() - jan4Monday.getTime();
+  const weekNumber = Math.floor(diffInMs / (7 * 24 * 60 * 60 * 1000)) + 1;
 
   // Format date as dd/mm/yyyy
   const day = date.getDate().toString().padStart(2, '0');
@@ -95,31 +107,40 @@ const sortAreasByDisplayOrder = async (areaNames: string[]): Promise<string[]> =
 };
 
 
-// Resize image for better performance
+// Resize image for better performance with caching
+const imageCache = new Map<string, string>();
+
 const resizeImage = (base64: string, targetWidth: number = 150, targetHeight: number = 150): Promise<string> => {
   return new Promise((resolve) => {
+    const cacheKey = `${base64.substring(0, 50)}_${targetWidth}_${targetHeight}`;
+
+    if (imageCache.has(cacheKey)) {
+      resolve(imageCache.get(cacheKey)!);
+      return;
+    }
+
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
-      
+
       if (!ctx) {
         resolve(base64);
         return;
       }
 
-      // Set exact dimensions for 1:1 ratio
       canvas.width = targetWidth;
       canvas.height = targetHeight;
-      
-      // Enable image smoothing for better quality
+
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      
-      // Draw image to fit the square canvas with high quality
+
       ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
-      resolve(canvas.toDataURL('image/jpeg', 0.9)); // Higher quality
+      const resized = canvas.toDataURL('image/jpeg', 0.85);
+      imageCache.set(cacheKey, resized);
+      resolve(resized);
     };
+    img.onerror = () => resolve(base64);
     img.src = base64;
   });
 };
@@ -136,18 +157,18 @@ export const exportToExcel = async (records: SanitationRecord[]): Promise<boolea
     }
 
     console.log('Loading full records with photos for export...');
-    const recordsWithPhotos: SanitationRecord[] = [];
-    for (const record of records) {
-      if (record.id) {
-        const fullRecord = await getRecordById(record.id);
-        // Only include records that have BOTH photos
-        if (fullRecord && fullRecord.photoBeforeUri && fullRecord.photoAfterUri) {
-          recordsWithPhotos.push(fullRecord);
-        } else {
-          console.log('Skipping record without both photos:', fullRecord?.area, fullRecord?.bagian);
-        }
-      }
-    }
+
+    // Batch load records in parallel for better performance
+    const recordPromises = records
+      .filter(r => r.id)
+      .map(record => getRecordById(record.id!));
+
+    const loadedRecords = await Promise.all(recordPromises);
+
+    const recordsWithPhotos: SanitationRecord[] = loadedRecords
+      .filter(fullRecord =>
+        fullRecord && fullRecord.photoBeforeUri && fullRecord.photoAfterUri
+      ) as SanitationRecord[];
 
     if (recordsWithPhotos.length === 0) {
       alert('Tidak ada data dengan foto lengkap untuk diekspor');
@@ -498,18 +519,18 @@ export const exportToPDF = async (records: SanitationRecord[]): Promise<boolean>
     }
 
     console.log('Loading full records with photos for PDF export...');
-    const recordsWithPhotos: SanitationRecord[] = [];
-    for (const record of records) {
-      if (record.id) {
-        const fullRecord = await getRecordById(record.id);
-        // Only include records that have BOTH photos
-        if (fullRecord && fullRecord.photoBeforeUri && fullRecord.photoAfterUri) {
-          recordsWithPhotos.push(fullRecord);
-        } else {
-          console.log('Skipping record without both photos:', fullRecord?.area, fullRecord?.bagian);
-        }
-      }
-    }
+
+    // Batch load records in parallel for better performance
+    const recordPromises = records
+      .filter(r => r.id)
+      .map(record => getRecordById(record.id!));
+
+    const loadedRecords = await Promise.all(recordPromises);
+
+    const recordsWithPhotos: SanitationRecord[] = loadedRecords
+      .filter(fullRecord =>
+        fullRecord && fullRecord.photoBeforeUri && fullRecord.photoAfterUri
+      ) as SanitationRecord[];
 
     if (recordsWithPhotos.length === 0) {
       alert('Tidak ada data dengan foto lengkap untuk diekspor');
