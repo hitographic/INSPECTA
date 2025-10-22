@@ -23,9 +23,12 @@ const KlipingRecordsScreen: React.FC = () => {
 
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [selectedLine, setSelectedLine] = useState('');
-  const [selectedRegu, setSelectedRegu] = useState('');
-  const [selectedShift, setSelectedShift] = useState('');
+  const [selectedLines, setSelectedLines] = useState<string[]>([]);
+  const [selectedRegus, setSelectedRegus] = useState<string[]>([]);
+  const [selectedShifts, setSelectedShifts] = useState<string[]>([]);
+  const [showLineDropdown, setShowLineDropdown] = useState(false);
+  const [showReguDropdown, setShowReguDropdown] = useState(false);
+  const [showShiftDropdown, setShowShiftDropdown] = useState(false);
 
   const [showCreatePopup, setShowCreatePopup] = useState(false);
   const [tempLine, setTempLine] = useState('');
@@ -51,10 +54,10 @@ const KlipingRecordsScreen: React.FC = () => {
 
   useEffect(() => {
     console.log('[KLIPING SCREEN] Applying filters, records count:', records.length);
-    console.log('[KLIPING SCREEN] Filters:', { startDate, endDate, selectedLine, selectedRegu, selectedShift });
+    console.log('[KLIPING SCREEN] Filters:', { startDate, endDate, selectedLines, selectedRegus, selectedShifts });
     applyFilters();
     setCurrentPage(1);
-  }, [records, startDate, endDate, selectedLine, selectedRegu, selectedShift]);
+  }, [records, startDate, endDate, selectedLines, selectedRegus, selectedShifts]);
 
   const checkPermissions = async () => {
     const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
@@ -151,22 +154,22 @@ const KlipingRecordsScreen: React.FC = () => {
       console.log('[KLIPING SCREEN] After endDate filter:', filtered.length);
     }
 
-    if (selectedLine) {
-      console.log('[KLIPING SCREEN] Applying line filter:', selectedLine);
-      filtered = filtered.filter(r => r.line === selectedLine);
-      console.log('[KLIPING SCREEN] After line filter:', filtered.length);
+    if (selectedLines.length > 0) {
+      console.log('[KLIPING SCREEN] Applying lines filter:', selectedLines);
+      filtered = filtered.filter(r => selectedLines.includes(r.line));
+      console.log('[KLIPING SCREEN] After lines filter:', filtered.length);
     }
 
-    if (selectedRegu) {
-      console.log('[KLIPING SCREEN] Applying regu filter:', selectedRegu);
-      filtered = filtered.filter(r => r.regu === selectedRegu);
-      console.log('[KLIPING SCREEN] After regu filter:', filtered.length);
+    if (selectedRegus.length > 0) {
+      console.log('[KLIPING SCREEN] Applying regus filter:', selectedRegus);
+      filtered = filtered.filter(r => selectedRegus.includes(r.regu));
+      console.log('[KLIPING SCREEN] After regus filter:', filtered.length);
     }
 
-    if (selectedShift) {
-      console.log('[KLIPING SCREEN] Applying shift filter:', selectedShift);
-      filtered = filtered.filter(r => r.shift === selectedShift);
-      console.log('[KLIPING SCREEN] After shift filter:', filtered.length);
+    if (selectedShifts.length > 0) {
+      console.log('[KLIPING SCREEN] Applying shifts filter:', selectedShifts);
+      filtered = filtered.filter(r => selectedShifts.includes(r.shift));
+      console.log('[KLIPING SCREEN] After shifts filter:', filtered.length);
     }
 
     console.log('[KLIPING SCREEN] Final filtered count:', filtered.length);
@@ -205,31 +208,40 @@ const KlipingRecordsScreen: React.FC = () => {
       return;
     }
 
-    alert('Memuat foto untuk export... Mohon tunggu');
+    const startTime = Date.now();
+    alert('Memuat foto untuk export... Mohon tunggu (proses mungkin memakan waktu 1-2 menit)');
 
-    const recordsWithPhotos = await getKlipingRecordsWithPhotos({
-      plant,
-      startDate,
-      endDate,
-      line: selectedLine || undefined
-    });
+    try {
+      const recordsWithPhotos = await getKlipingRecordsWithPhotos({
+        plant,
+        startDate,
+        endDate,
+        line: selectedLines.length === 1 ? selectedLines[0] : undefined
+      });
 
-    const sessions = groupRecordsBySession(recordsWithPhotos);
+      const sessions = groupRecordsBySession(recordsWithPhotos);
+      console.log(`[EXPORT] Loaded ${recordsWithPhotos.length} records in ${(Date.now() - startTime) / 1000}s`);
 
-    if (sessions.length > 1) {
-      const success = await exportAllKlipingToZip(recordsWithPhotos, 'excel');
-      if (success) {
-        alert(`Export berhasil! ${sessions.length} file Excel dalam ZIP`);
+      if (sessions.length > 1) {
+        const success = await exportAllKlipingToZip(recordsWithPhotos, 'excel');
+        const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+        if (success) {
+          alert(`Export berhasil! ${sessions.length} file Excel dalam ZIP (${duration} detik)`);
+        } else {
+          alert('Export gagal!');
+        }
       } else {
-        alert('Export gagal!');
+        const success = await exportKlipingToExcel(recordsWithPhotos);
+        const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+        if (success) {
+          alert(`Export Excel berhasil! (${duration} detik)`);
+        } else {
+          alert('Export Excel gagal!');
+        }
       }
-    } else {
-      const success = await exportKlipingToExcel(recordsWithPhotos);
-      if (success) {
-        alert('Export Excel berhasil!');
-      } else {
-        alert('Export Excel gagal!');
-      }
+    } catch (error) {
+      console.error('[EXPORT] Error:', error);
+      alert('Export gagal: ' + error);
     }
   };
 
@@ -239,31 +251,40 @@ const KlipingRecordsScreen: React.FC = () => {
       return;
     }
 
-    alert('Memuat foto untuk export... Mohon tunggu');
+    const startTime = Date.now();
+    alert('Memuat foto untuk export... Mohon tunggu (proses mungkin memakan waktu 1-2 menit)');
 
-    const recordsWithPhotos = await getKlipingRecordsWithPhotos({
-      plant,
-      startDate,
-      endDate,
-      line: selectedLine || undefined
-    });
+    try {
+      const recordsWithPhotos = await getKlipingRecordsWithPhotos({
+        plant,
+        startDate,
+        endDate,
+        line: selectedLines.length === 1 ? selectedLines[0] : undefined
+      });
 
-    const sessions = groupRecordsBySession(recordsWithPhotos);
+      const sessions = groupRecordsBySession(recordsWithPhotos);
+      console.log(`[EXPORT] Loaded ${recordsWithPhotos.length} records in ${(Date.now() - startTime) / 1000}s`);
 
-    if (sessions.length > 1) {
-      const success = await exportAllKlipingToZip(recordsWithPhotos, 'pdf');
-      if (success) {
-        alert(`Export berhasil! ${sessions.length} file PDF dalam ZIP`);
+      if (sessions.length > 1) {
+        const success = await exportAllKlipingToZip(recordsWithPhotos, 'pdf');
+        const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+        if (success) {
+          alert(`Export berhasil! ${sessions.length} file PDF dalam ZIP (${duration} detik)`);
+        } else {
+          alert('Export gagal!');
+        }
       } else {
-        alert('Export gagal!');
+        const success = await exportKlipingToPDF(recordsWithPhotos);
+        const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+        if (success) {
+          alert(`Export PDF berhasil! (${duration} detik)`);
+        } else {
+          alert('Export PDF gagal!');
+        }
       }
-    } else {
-      const success = await exportKlipingToPDF(recordsWithPhotos);
-      if (success) {
-        alert('Export PDF berhasil!');
-      } else {
-        alert('Export PDF gagal!');
-      }
+    } catch (error) {
+      console.error('[EXPORT] Error:', error);
+      alert('Export gagal: ' + error);
     }
   };
 
@@ -303,42 +324,56 @@ const KlipingRecordsScreen: React.FC = () => {
   };
 
   const handleExportRecordExcel = async (record: KlipingRecord) => {
+    const startTime = Date.now();
     alert('Memuat foto untuk export... Mohon tunggu');
 
-    const recordsWithPhotos = await getKlipingRecordsWithPhotos({
-      plant,
-      startDate: record.tanggal,
-      endDate: record.tanggal,
-      line: record.line,
-      regu: record.regu,
-      shift: record.shift
-    });
+    try {
+      const recordsWithPhotos = await getKlipingRecordsWithPhotos({
+        plant,
+        startDate: record.tanggal,
+        endDate: record.tanggal,
+        line: record.line,
+        regu: record.regu,
+        shift: record.shift
+      });
 
-    const success = await exportKlipingToExcel(recordsWithPhotos);
-    if (success) {
-      alert('Export Excel berhasil!');
-    } else {
-      alert('Export Excel gagal!');
+      const success = await exportKlipingToExcel(recordsWithPhotos);
+      const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+      if (success) {
+        alert(`Export Excel berhasil! (${duration} detik)`);
+      } else {
+        alert('Export Excel gagal!');
+      }
+    } catch (error) {
+      console.error('[EXPORT] Error:', error);
+      alert('Export gagal: ' + error);
     }
   };
 
   const handleExportRecordPDF = async (record: KlipingRecord) => {
+    const startTime = Date.now();
     alert('Memuat foto untuk export... Mohon tunggu');
 
-    const recordsWithPhotos = await getKlipingRecordsWithPhotos({
-      plant,
-      startDate: record.tanggal,
-      endDate: record.tanggal,
-      line: record.line,
-      regu: record.regu,
-      shift: record.shift
-    });
+    try {
+      const recordsWithPhotos = await getKlipingRecordsWithPhotos({
+        plant,
+        startDate: record.tanggal,
+        endDate: record.tanggal,
+        line: record.line,
+        regu: record.regu,
+        shift: record.shift
+      });
 
-    const success = await exportKlipingToPDF(recordsWithPhotos);
-    if (success) {
-      alert('Export PDF berhasil!');
-    } else {
-      alert('Export PDF gagal!');
+      const success = await exportKlipingToPDF(recordsWithPhotos);
+      const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+      if (success) {
+        alert(`Export PDF berhasil! (${duration} detik)`);
+      } else {
+        alert('Export PDF gagal!');
+      }
+    } catch (error) {
+      console.error('[EXPORT] Error:', error);
+      alert('Export gagal: ' + error);
     }
   };
 
@@ -523,70 +558,291 @@ const KlipingRecordsScreen: React.FC = () => {
             </div>
           </div>
 
-          <div style={{ marginBottom: '24px' }}>
+          <div style={{ marginBottom: '24px', position: 'relative' }}>
             <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#4a5568', marginBottom: '8px' }}>
               Filter by Line
             </label>
-            <select
-              value={selectedLine}
-              onChange={(e) => setSelectedLine(e.target.value)}
+            <div
+              onClick={() => setShowLineDropdown(!showLineDropdown)}
               style={{
                 width: '100%',
                 padding: '12px',
                 borderRadius: '12px',
                 border: '2px solid #d1fae5',
                 fontSize: '14px',
+                cursor: 'pointer',
+                backgroundColor: '#fff',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
               }}
             >
-              <option value="">Semua Line</option>
-              {lines.map(line => (
-                <option key={line} value={line}>{line}</option>
-              ))}
-            </select>
+              <span>{selectedLines.length === 0 ? 'Semua Line' : `${selectedLines.length} Line dipilih`}</span>
+              <span style={{ transform: showLineDropdown ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>▼</span>
+            </div>
+            {showLineDropdown && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                right: 0,
+                backgroundColor: '#fff',
+                border: '2px solid #d1fae5',
+                borderRadius: '12px',
+                marginTop: '4px',
+                maxHeight: '200px',
+                overflowY: 'auto',
+                zIndex: 10,
+                boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+              }}>
+                <div
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (selectedLines.length === lines.length) {
+                      setSelectedLines([]);
+                    } else {
+                      setSelectedLines(lines);
+                    }
+                  }}
+                  style={{
+                    padding: '12px',
+                    cursor: 'pointer',
+                    borderBottom: '1px solid #e5e7eb',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    backgroundColor: selectedLines.length === lines.length ? '#ecfdf5' : 'transparent'
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedLines.length === lines.length}
+                    onChange={() => {}}
+                    style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                  />
+                  <span style={{ fontWeight: '600' }}>Semua Line</span>
+                </div>
+                {lines.map(line => (
+                  <div
+                    key={line}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (selectedLines.includes(line)) {
+                        setSelectedLines(selectedLines.filter(l => l !== line));
+                      } else {
+                        setSelectedLines([...selectedLines, line]);
+                      }
+                    }}
+                    style={{
+                      padding: '12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      backgroundColor: selectedLines.includes(line) ? '#ecfdf5' : 'transparent'
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedLines.includes(line)}
+                      onChange={() => {}}
+                      style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                    />
+                    <span>{line}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div style={{ marginBottom: '24px' }}>
+          <div style={{ marginBottom: '24px', position: 'relative' }}>
             <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#4a5568', marginBottom: '8px' }}>
               Filter by Regu
             </label>
-            <select
-              value={selectedRegu}
-              onChange={(e) => setSelectedRegu(e.target.value)}
+            <div
+              onClick={() => setShowReguDropdown(!showReguDropdown)}
               style={{
                 width: '100%',
                 padding: '12px',
                 borderRadius: '12px',
                 border: '2px solid #d1fae5',
                 fontSize: '14px',
+                cursor: 'pointer',
+                backgroundColor: '#fff',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
               }}
             >
-              <option value="">Semua Regu</option>
-              {REGU_OPTIONS.map(regu => (
-                <option key={regu} value={regu}>{regu}</option>
-              ))}
-            </select>
+              <span>{selectedRegus.length === 0 ? 'Semua Regu' : selectedRegus.join(', ')}</span>
+              <span style={{ transform: showReguDropdown ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>▼</span>
+            </div>
+            {showReguDropdown && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                right: 0,
+                backgroundColor: '#fff',
+                border: '2px solid #d1fae5',
+                borderRadius: '12px',
+                marginTop: '4px',
+                zIndex: 10,
+                boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+              }}>
+                <div
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (selectedRegus.length === REGU_OPTIONS.length) {
+                      setSelectedRegus([]);
+                    } else {
+                      setSelectedRegus([...REGU_OPTIONS]);
+                    }
+                  }}
+                  style={{
+                    padding: '12px',
+                    cursor: 'pointer',
+                    borderBottom: '1px solid #e5e7eb',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    backgroundColor: selectedRegus.length === REGU_OPTIONS.length ? '#ecfdf5' : 'transparent'
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedRegus.length === REGU_OPTIONS.length}
+                    onChange={() => {}}
+                    style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                  />
+                  <span style={{ fontWeight: '600' }}>Semua Regu</span>
+                </div>
+                {REGU_OPTIONS.map(regu => (
+                  <div
+                    key={regu}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (selectedRegus.includes(regu)) {
+                        setSelectedRegus(selectedRegus.filter(r => r !== regu));
+                      } else {
+                        setSelectedRegus([...selectedRegus, regu]);
+                      }
+                    }}
+                    style={{
+                      padding: '12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      backgroundColor: selectedRegus.includes(regu) ? '#ecfdf5' : 'transparent'
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedRegus.includes(regu)}
+                      onChange={() => {}}
+                      style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                    />
+                    <span>{regu}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div style={{ marginBottom: '24px' }}>
+          <div style={{ marginBottom: '24px', position: 'relative' }}>
             <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#4a5568', marginBottom: '8px' }}>
               Filter by Shift
             </label>
-            <select
-              value={selectedShift}
-              onChange={(e) => setSelectedShift(e.target.value)}
+            <div
+              onClick={() => setShowShiftDropdown(!showShiftDropdown)}
               style={{
                 width: '100%',
                 padding: '12px',
                 borderRadius: '12px',
                 border: '2px solid #d1fae5',
                 fontSize: '14px',
+                cursor: 'pointer',
+                backgroundColor: '#fff',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
               }}
             >
-              <option value="">Semua Shift</option>
-              {SHIFT_OPTIONS.map(shift => (
-                <option key={shift} value={shift}>{shift}</option>
-              ))}
-            </select>
+              <span>{selectedShifts.length === 0 ? 'Semua Shift' : selectedShifts.join(', ')}</span>
+              <span style={{ transform: showShiftDropdown ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>▼</span>
+            </div>
+            {showShiftDropdown && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                right: 0,
+                backgroundColor: '#fff',
+                border: '2px solid #d1fae5',
+                borderRadius: '12px',
+                marginTop: '4px',
+                zIndex: 10,
+                boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+              }}>
+                <div
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (selectedShifts.length === SHIFT_OPTIONS.length) {
+                      setSelectedShifts([]);
+                    } else {
+                      setSelectedShifts([...SHIFT_OPTIONS]);
+                    }
+                  }}
+                  style={{
+                    padding: '12px',
+                    cursor: 'pointer',
+                    borderBottom: '1px solid #e5e7eb',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    backgroundColor: selectedShifts.length === SHIFT_OPTIONS.length ? '#ecfdf5' : 'transparent'
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedShifts.length === SHIFT_OPTIONS.length}
+                    onChange={() => {}}
+                    style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                  />
+                  <span style={{ fontWeight: '600' }}>Semua Shift</span>
+                </div>
+                {SHIFT_OPTIONS.map(shift => (
+                  <div
+                    key={shift}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (selectedShifts.includes(shift)) {
+                        setSelectedShifts(selectedShifts.filter(s => s !== shift));
+                      } else {
+                        setSelectedShifts([...selectedShifts, shift]);
+                      }
+                    }}
+                    style={{
+                      padding: '12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      backgroundColor: selectedShifts.includes(shift) ? '#ecfdf5' : 'transparent'
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedShifts.includes(shift)}
+                      onChange={() => {}}
+                      style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                    />
+                    <span>{shift}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div style={{ display: 'flex', gap: '12px', marginBottom: '32px' }}>

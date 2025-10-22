@@ -235,44 +235,66 @@ export const getKlipingRecordsWithPhotos = async (filters?: {
   try {
     console.log('[KLIPING] Fetching records WITH PHOTOS with filters:', filters);
 
-    let query = supabase
-      .from('kliping_records')
-      .select('*')
-      .order('created_at', { ascending: false });
+    const BATCH_SIZE = 20;
+    let allRecords: KlipingRecord[] = [];
+    let offset = 0;
+    let hasMore = true;
 
-    if (filters?.plant) {
-      query = query.eq('plant', filters.plant);
+    while (hasMore) {
+      console.log(`[KLIPING] Fetching batch starting at offset ${offset}...`);
+
+      let query = supabase
+        .from('kliping_records')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .range(offset, offset + BATCH_SIZE - 1);
+
+      if (filters?.plant) {
+        query = query.eq('plant', filters.plant);
+      }
+
+      if (filters?.startDate) {
+        query = query.gte('tanggal', filters.startDate);
+      }
+
+      if (filters?.endDate) {
+        query = query.lte('tanggal', filters.endDate);
+      }
+
+      if (filters?.line) {
+        query = query.eq('line', filters.line);
+      }
+
+      if (filters?.regu) {
+        query = query.eq('regu', filters.regu);
+      }
+
+      if (filters?.shift) {
+        query = query.eq('shift', filters.shift);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('[KLIPING] Error fetching batch:', error);
+        throw error;
+      }
+
+      if (!data || data.length === 0) {
+        hasMore = false;
+      } else {
+        console.log(`[KLIPING] Fetched ${data.length} records in this batch`);
+        allRecords = allRecords.concat(data);
+        offset += BATCH_SIZE;
+
+        if (data.length < BATCH_SIZE) {
+          hasMore = false;
+        }
+      }
     }
 
-    if (filters?.startDate) {
-      query = query.gte('tanggal', filters.startDate);
-    }
-
-    if (filters?.endDate) {
-      query = query.lte('tanggal', filters.endDate);
-    }
-
-    if (filters?.line) {
-      query = query.eq('line', filters.line);
-    }
-
-    if (filters?.regu) {
-      query = query.eq('regu', filters.regu);
-    }
-
-    if (filters?.shift) {
-      query = query.eq('shift', filters.shift);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('[KLIPING] Error fetching records with photos:', error);
-      throw error;
-    }
-
-    console.log('[KLIPING] Fetched', data?.length || 0, 'records WITH PHOTOS');
-    return data || [];
+    console.log(`[KLIPING] Total fetched: ${allRecords.length} records WITH PHOTOS`);
+    return allRecords;
   } catch (error) {
     console.error('[KLIPING] Error in getKlipingRecordsWithPhotos:', error);
     return [];

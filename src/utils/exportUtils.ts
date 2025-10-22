@@ -121,7 +121,7 @@ const hashBase64 = (str: string): string => {
   return hash.toString(36);
 };
 
-const resizeImage = (base64: string, targetWidth: number = 150, targetHeight: number = 150): Promise<string> => {
+const resizeImage = (base64: string, targetWidth: number = 200, targetHeight: number = 200): Promise<string> => {
   return new Promise((resolve) => {
     const cacheKey = `${hashBase64(base64)}_${targetWidth}_${targetHeight}`;
 
@@ -144,10 +144,10 @@ const resizeImage = (base64: string, targetWidth: number = 150, targetHeight: nu
       canvas.height = targetHeight;
 
       ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
+      ctx.imageSmoothingQuality = 'medium';
 
       ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
-      const resized = canvas.toDataURL('image/jpeg', 0.85);
+      const resized = canvas.toDataURL('image/jpeg', 0.65);
       imageCache.set(cacheKey, resized);
       resolve(resized);
     };
@@ -399,10 +399,10 @@ keteranganCell.alignment = { wrapText: true, vertical: 'middle' };
             cell.font = { size: 12 }; // Ubah angka ini untuk mengatur ukuran font
           });
 
-          // Add images with 1:1 ratio and export 300px size
+          // Add images with 1:1 ratio and export 200px size for smaller file
           try {
             if (record.photoBeforeUri) {
-              const resizedBefore = await resizeImage(record.photoBeforeUri, 300, 300);
+              const resizedBefore = await resizeImage(record.photoBeforeUri, 200, 200);
               const beforeBuffer = base64ToBuffer(resizedBefore);
               const beforeImageId = workbook.addImage({
                 buffer: beforeBuffer,
@@ -417,7 +417,7 @@ keteranganCell.alignment = { wrapText: true, vertical: 'middle' };
             }
 
             if (record.photoAfterUri) {
-              const resizedAfter = await resizeImage(record.photoAfterUri, 300, 300);
+              const resizedAfter = await resizeImage(record.photoAfterUri, 200, 200);
               const afterBuffer = base64ToBuffer(resizedAfter);
               const afterImageId = workbook.addImage({
                 buffer: afterBuffer,
@@ -740,10 +740,10 @@ export const exportToPDF = async (records: SanitationRecord[]): Promise<boolean>
           pdf.text(bagianLines, xPos + 2, yPosition + 8);
           xPos += colWidths[2];
           
-          // Add high-quality images
+          // Add compressed images for smaller file size
           try {
             if (record.photoBeforeUri) {
-              const resizedBefore = await resizeImage(record.photoBeforeUri, 300, 300); // Higher resolution
+              const resizedBefore = await resizeImage(record.photoBeforeUri, 200, 200);
               const imageWidth = 50;  // atur sesuai kebutuhan
               const imageHeight = 45; // atur sesuai kebutuhan
               const imageX = xPos + (colWidths[3] - imageWidth) / 2; // Center horizontally
@@ -753,7 +753,7 @@ export const exportToPDF = async (records: SanitationRecord[]): Promise<boolean>
             xPos += colWidths[3];
 
             if (record.photoAfterUri) {
-              const resizedAfter = await resizeImage(record.photoAfterUri, 300, 300); // Higher resolution
+              const resizedAfter = await resizeImage(record.photoAfterUri, 200, 200);
               const imageWidth = 50;  // atur sesuai kebutuhan
               const imageHeight = 45; // atur sesuai kebutuhan
               const imageX = xPos + (colWidths[4] - imageWidth) / 2; // Center horizontally
