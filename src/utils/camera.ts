@@ -309,26 +309,17 @@ export class CameraManager {
             const fontSize = Math.max(24, Math.min(48, canvas.width / 20));
             context.font = `bold ${fontSize}px Arial`;
 
-            const textMetrics = context.measureText(timestamp);
-            const textWidth = textMetrics.width;
-            const textHeight = fontSize;
-
             const padding = 16;
-            const backgroundWidth = textWidth + (padding * 2);
-            const backgroundHeight = textHeight + (padding * 1.2);
             const backgroundX = padding;
-            const backgroundY = canvas.height - backgroundHeight - padding;
-
-            context.fillStyle = 'rgba(0, 0, 0, 1)';
-            context.fillRect(backgroundX, backgroundY, backgroundWidth, backgroundHeight);
+            const textY = canvas.height - padding;
 
             context.fillStyle = '#FFFFFF';
             context.textAlign = 'left';
-            context.textBaseline = 'middle';
+            context.textBaseline = 'bottom';
             context.fillText(
               timestamp,
-              backgroundX + padding,
-              backgroundY + (backgroundHeight / 2)
+              backgroundX,
+              textY
             );
 
             const dataURL = canvas.toDataURL('image/jpeg', 0.8);

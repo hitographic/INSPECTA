@@ -1,5 +1,6 @@
 import { SanitationRecord } from '../types/database';
 import { supabase } from '../utils/supabase';
+import { requestQueue } from './requestQueue';
 
 // Add debug logging
 const DEBUG = true;
@@ -190,13 +191,15 @@ class DatabaseManager {
     try {
       log('Fetching records metadata:', { plant, line, tanggal });
 
-      const { data, error } = await supabase
-        .from('sanitation_records')
-        .select('id, area, bagian, status, foto_sebelum_timestamp, foto_sesudah_timestamp')
-        .eq('plant', plant)
-        .eq('line', line)
-        .eq('tanggal', tanggal)
-        .order('created_at', { ascending: false });
+      const { data, error } = await requestQueue.add(async () => {
+        return await supabase
+          .from('sanitation_records')
+          .select('id, area, bagian, status, foto_sebelum_timestamp, foto_sesudah_timestamp')
+          .eq('plant', plant)
+          .eq('line', line)
+          .eq('tanggal', tanggal)
+          .order('created_at', { ascending: false });
+      });
 
       if (error) {
         log('Get records metadata error:', error);
@@ -205,7 +208,7 @@ class DatabaseManager {
 
       // Remove duplicates - keep only the latest record for each area+bagian combination
       const uniqueRecords = new Map();
-      (data || []).forEach(record => {
+      (data || []).forEach((record: any) => {
         const key = `${record.area}-${record.bagian}`;
         if (!uniqueRecords.has(key)) {
           uniqueRecords.set(key, record);

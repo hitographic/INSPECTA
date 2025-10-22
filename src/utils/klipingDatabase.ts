@@ -234,9 +234,9 @@ export const getKlipingRecordsWithPhotos = async (filters?: {
   shift?: string;
 }): Promise<KlipingRecord[]> => {
   try {
-    console.log('[KLIPING] Fetching records metadata (photos loaded on-demand) with filters:', filters);
+    console.log('[KLIPING] Fetching records WITH PHOTOS with filters:', filters);
 
-    const BATCH_SIZE = 50;
+    const BATCH_SIZE = 10;
     let allRecords: KlipingRecord[] = [];
     let offset = 0;
     let hasMore = true;
@@ -247,7 +247,7 @@ export const getKlipingRecordsWithPhotos = async (filters?: {
       const { data, error } = await requestQueue.add(async () => {
         let query = supabase
           .from('kliping_records')
-          .select('id, id_unik, plant, tanggal, line, regu, shift, Flavor, Pengamatan_ke, Mesin, created_by, created_at, updated_at, is_complete, pengamatan_timestamp')
+          .select('*')
           .order('created_at', { ascending: false })
           .range(offset, offset + BATCH_SIZE - 1);
 

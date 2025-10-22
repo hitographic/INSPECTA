@@ -552,24 +552,24 @@ export default function CreateRecordScreen() {
       const photoAfterChanged = !existingRecordData ||
         (existingRecordData.photoAfterUri !== photoAfter && existingRecordData.foto_sesudah !== photoAfter);
 
-      if (photoBefore && photoBeforeChanged) {
-        const customDate = photoBeforeSource === 'upload' ? photoBeforeDate : undefined;
-        const customTime = photoBeforeSource === 'upload' ? photoBeforeTime : undefined;
+      if (photoBefore && photoBeforeChanged && photoBeforeSource === 'camera') {
         photoBeforeWithTimestamp = await cameraManager.current.addTimestampToImage(
           photoBefore,
-          customDate,
-          customTime
+          undefined,
+          undefined
         ) || photoBefore;
+      } else if (photoBefore && photoBeforeChanged) {
+        photoBeforeWithTimestamp = photoBefore;
       }
 
-      if (photoAfter && photoAfterChanged) {
-        const customDate = photoAfterSource === 'upload' ? photoAfterDate : undefined;
-        const customTime = photoAfterSource === 'upload' ? photoAfterTime : undefined;
+      if (photoAfter && photoAfterChanged && photoAfterSource === 'camera') {
         photoAfterWithTimestamp = await cameraManager.current.addTimestampToImage(
           photoAfter,
-          customDate,
-          customTime
+          undefined,
+          undefined
         ) || photoAfter;
+      } else if (photoAfter && photoAfterChanged) {
+        photoAfterWithTimestamp = photoAfter;
       }
 
       if (existingRecord && existingRecord.id) {
@@ -950,34 +950,6 @@ export default function CreateRecordScreen() {
                     borderRadius: '0.5rem',
                     marginTop: '0.5rem'
                   }}>
-                    {photoBeforeSource === 'upload' && (
-                      <div style={{ marginBottom: '1rem' }}>
-                        <label style={{ fontSize: '0.875rem', color: '#374151', fontWeight: '500', display: 'block', marginBottom: '0.5rem' }}>
-                          Tanggal & Waktu Foto (Custom)
-                        </label>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                          <input
-                            type="date"
-                            className="input"
-                            value={photoBeforeDate}
-                            onChange={(e) => setPhotoBeforeDate(e.target.value)}
-                            required
-                            style={{ fontSize: '0.875rem' }}
-                          />
-                          <input
-                            type="time"
-                            className="input"
-                            value={photoBeforeTime}
-                            onChange={(e) => setPhotoBeforeTime(e.target.value)}
-                            required
-                            style={{ fontSize: '0.875rem' }}
-                          />
-                        </div>
-                        <p style={{ fontSize: '0.75rem', color: '#6B7280', marginTop: '0.5rem' }}>
-                          Timestamp akan muncul di foto saat klik "Simpan Sementara"
-                        </p>
-                      </div>
-                    )}
                     {photoBeforeSource === 'camera' && (
                       <div style={{ marginBottom: '1rem' }}>
                         <p style={{ fontSize: '0.875rem', color: '#6B7280', padding: '0.75rem', background: 'white', borderRadius: '0.375rem' }}>
@@ -1067,34 +1039,6 @@ export default function CreateRecordScreen() {
                     borderRadius: '0.5rem',
                     marginTop: '0.5rem'
                   }}>
-                    {photoAfterSource === 'upload' && (
-                      <div style={{ marginBottom: '1rem' }}>
-                        <label style={{ fontSize: '0.875rem', color: '#374151', fontWeight: '500', display: 'block', marginBottom: '0.5rem' }}>
-                          Tanggal & Waktu Foto (Custom)
-                        </label>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                          <input
-                            type="date"
-                            className="input"
-                            value={photoAfterDate}
-                            onChange={(e) => setPhotoAfterDate(e.target.value)}
-                            required
-                            style={{ fontSize: '0.875rem' }}
-                          />
-                          <input
-                            type="time"
-                            className="input"
-                            value={photoAfterTime}
-                            onChange={(e) => setPhotoAfterTime(e.target.value)}
-                            required
-                            style={{ fontSize: '0.875rem' }}
-                          />
-                        </div>
-                        <p style={{ fontSize: '0.75rem', color: '#6B7280', marginTop: '0.5rem' }}>
-                          Timestamp akan muncul di foto saat klik "Simpan Sementara"
-                        </p>
-                      </div>
-                    )}
                     {photoAfterSource === 'camera' && (
                       <div style={{ marginBottom: '1rem' }}>
                         <p style={{ fontSize: '0.875rem', color: '#6B7280', padding: '0.75rem', background: 'white', borderRadius: '0.375rem' }}>
