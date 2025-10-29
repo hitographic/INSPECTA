@@ -110,7 +110,7 @@ export class CameraManager {
       console.log('Video actual dimensions:', videoWidth, 'x', videoHeight);
 
       // Calculate 1:1 square aspect ratio with max size limit
-      const MAX_DIMENSION = 1024; // Limit to 1024px for smaller file size
+      const MAX_DIMENSION = 800; // Limit to 800px for smaller file size
       let sourceWidth, sourceHeight, sourceX, sourceY;
       let finalWidth, finalHeight;
 
@@ -151,7 +151,7 @@ export class CameraManager {
       );
 
       // Convert to base64 with good quality (no timestamp yet)
-      const dataURL = canvas.toDataURL('image/jpeg', 0.85);
+      const dataURL = canvas.toDataURL('image/jpeg', 0.7);
       
       if (dataURL === 'data:,' || dataURL.length < 100) {
         console.error('Canvas appears to be empty or invalid');

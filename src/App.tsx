@@ -10,6 +10,9 @@ import MasterDataManagement from './pages/MasterDataManagement'
 import PlantSelectionKlipingScreen from './pages/PlantSelectionKlipingScreen'
 import KlipingRecordsScreen from './pages/KlipingRecordsScreen'
 import CreateKlipingScreen from './pages/CreateKlipingScreen'
+import PlantSelectionMonitoringScreen from './pages/PlantSelectionMonitoringScreen'
+import MonitoringRecordsScreen from './pages/MonitoringRecordsScreen'
+import CreateMonitoringScreen from './pages/CreateMonitoringScreen'
 import './App.css'
 
 
@@ -28,6 +31,9 @@ function App() {
             <Route path="/kliping-records" element={<KlipingRecordsScreen />} />
             <Route path="/create-kliping" element={<CreateKlipingScreen />} />
             <Route path="/create-kliping/:id" element={<CreateKlipingScreen />} />
+            <Route path="/plant-selection-monitoring" element={<PlantSelectionMonitoringScreen />} />
+            <Route path="/monitoring-records" element={<MonitoringRecordsScreen />} />
+            <Route path="/create-monitoring" element={<CreateMonitoringScreen />} />
             <Route path="/admin" element={<AdminPanel />} />
             <Route path="/master-data" element={<MasterDataManagement />} />
             <Route path="*" element={<Navigate to="/" replace />} />

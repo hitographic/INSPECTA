@@ -45,8 +45,8 @@ const MenuSelectionScreen: React.FC = () => {
       id: 'monitoring_area',
       icon: Factory,
       title: 'Monitoring Area',
-      color: '#F59E0B',
-      available: false
+      color: '#F1AA62',
+      available: true
     },
     {
       id: 'audit_internal',
@@ -73,6 +73,8 @@ const MenuSelectionScreen: React.FC = () => {
       navigate('/plant-selection');
     } else if (menuId === 'kliping') {
       navigate('/plant-selection-kliping');
+    } else if (menuId === 'monitoring_area') {
+      navigate('/plant-selection-monitoring');
     }
   };
 
