@@ -109,10 +109,29 @@ export default function MasterDataManagement() {
 
         const areasMap = new Map(areasData?.map(a => [a.id, a.name]) || []);
 
-        const formatted = bagianData?.map(item => ({
-          ...item,
-          area_name: areasMap.get(item.area_id) || 'Unknown'
-        })) || [];
+        const formatted = bagianData?.map(item => {
+          let lineNumbers = item.line_numbers || [];
+
+          // Parse if line_numbers is a string
+          if (typeof lineNumbers === 'string') {
+            try {
+              lineNumbers = JSON.parse(lineNumbers);
+            } catch {
+              lineNumbers = [];
+            }
+          }
+
+          // Ensure it's an array
+          if (!Array.isArray(lineNumbers)) {
+            lineNumbers = [];
+          }
+
+          return {
+            ...item,
+            line_numbers: lineNumbers,
+            area_name: areasMap.get(item.area_id) || 'Unknown'
+          };
+        }) || [];
 
         setBagianList(formatted);
         setAreas(areasData || []);
@@ -156,7 +175,25 @@ export default function MasterDataManagement() {
 
   const handleEdit = (item: any) => {
     setEditingId(item.id);
-    setFormData({ ...item });
+
+    // Ensure line_numbers is properly formatted for bagian
+    if (activeTab === 'bagian') {
+      let lineNumbers = item.line_numbers || [];
+      if (typeof lineNumbers === 'string') {
+        try {
+          lineNumbers = JSON.parse(lineNumbers);
+        } catch {
+          lineNumbers = [];
+        }
+      }
+      if (!Array.isArray(lineNumbers)) {
+        lineNumbers = [];
+      }
+      setFormData({ ...item, line_numbers: lineNumbers });
+    } else {
+      setFormData({ ...item });
+    }
+
     setShowAddForm(true);
   };
 
@@ -248,10 +285,11 @@ export default function MasterDataManagement() {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(b => {
         if (searchField === 'all') {
+          const lineNumbers = Array.isArray(b.line_numbers) ? b.line_numbers : [];
           return b.name.toLowerCase().includes(query) ||
                  b.keterangan.toLowerCase().includes(query) ||
                  b.area_name?.toLowerCase().includes(query) ||
-                 b.line_numbers.some(line => line.includes(query));
+                 lineNumbers.some(line => line.includes(query));
         } else if (searchField === 'name') {
           return b.name.toLowerCase().includes(query);
         } else if (searchField === 'keterangan') {
@@ -268,7 +306,10 @@ export default function MasterDataManagement() {
     }
 
     if (filterLines) {
-      filtered = filtered.filter(b => b.line_numbers.includes(filterLines));
+      filtered = filtered.filter(b => {
+        const lineNumbers = Array.isArray(b.line_numbers) ? b.line_numbers : [];
+        return lineNumbers.includes(filterLines);
+      });
     }
 
     filtered.sort((a, b) => {
@@ -309,7 +350,8 @@ export default function MasterDataManagement() {
   const getAllUniqueLines = () => {
     const lines = new Set<string>();
     bagianList.forEach(b => {
-      b.line_numbers.forEach(line => lines.add(line));
+      const lineNumbers = Array.isArray(b.line_numbers) ? b.line_numbers : [];
+      lineNumbers.forEach(line => lines.add(line));
     });
     return Array.from(lines).sort((a, b) => {
       const numA = parseInt(a);
@@ -1082,7 +1124,7 @@ export default function MasterDataManagement() {
                     </td>
                     <td style={{ padding: '1rem' }}>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
-                        {bagian.line_numbers.map(line => (
+                        {(Array.isArray(bagian.line_numbers) ? bagian.line_numbers : []).map(line => (
                           <span
                             key={line}
                             style={{

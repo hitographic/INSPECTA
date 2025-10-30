@@ -4,7 +4,7 @@ import { KlipingRecord } from '../types/database';
 import { supabase } from './supabase';
 import { requestQueue } from './requestQueue';
 
-const fetchRecordPhotos = async (recordId: number): Promise<any> => {
+const fetchRecordPhotos = async (recordId: string): Promise<any> => {
   try {
     const result = await requestQueue.add(async () => {
       return await supabase
@@ -190,7 +190,7 @@ export const exportKlipingToExcel = async (records: KlipingRecord[]): Promise<bo
 
     const groupedByPengamatan: { [key: string]: KlipingRecord[] } = {};
     records.forEach(record => {
-      const key = record.Pengamatan_ke || '0';
+      const key = record.pengamatan_ke || '0';
       if (!groupedByPengamatan[key]) {
         groupedByPengamatan[key] = [];
       }
@@ -199,7 +199,7 @@ export const exportKlipingToExcel = async (records: KlipingRecord[]): Promise<bo
 
     Object.keys(groupedByPengamatan).forEach(key => {
       groupedByPengamatan[key].sort((a, b) => {
-        return sortMesinNumber(a.Mesin || '') - sortMesinNumber(b.Mesin || '');
+        return sortMesinNumber(a.mesin || '') - sortMesinNumber(b.mesin || '');
       });
     });
 
@@ -288,7 +288,7 @@ export const exportKlipingToExcel = async (records: KlipingRecord[]): Promise<bo
 
       const firstRecordOfPengamatan = recordsForPengamatan[0];
       const flavorCell = worksheet.getCell(headerRow + 1, startCol);
-      flavorCell.value = `${firstRecordOfPengamatan.Flavor} (${formatTime(firstRecordOfPengamatan.pengamatan_timestamp)})`;
+      flavorCell.value = `${firstRecordOfPengamatan.flavor} (${formatTime(firstRecordOfPengamatan.pengamatan_timestamp)})`;
       flavorCell.font = { bold: true, size: 10 };
       flavorCell.alignment = { horizontal: 'center', vertical: 'middle' };
       flavorCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
@@ -301,7 +301,7 @@ export const exportKlipingToExcel = async (records: KlipingRecord[]): Promise<bo
 
       recordsForPengamatan.forEach((record, idx) => {
         const mesinCell = worksheet.getCell(headerRow + 2, startCol + idx);
-        mesinCell.value = record.Mesin?.toUpperCase() || 'N/A';
+        mesinCell.value = record.mesin?.toUpperCase() || 'N/A';
         mesinCell.font = { bold: true, size: 9 };
         mesinCell.alignment = { horizontal: 'center', vertical: 'middle' };
         mesinCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDE9D9' } };
@@ -432,7 +432,7 @@ const generateExcelBuffer = async (records: KlipingRecord[]): Promise<ArrayBuffe
 
   const groupedByPengamatan: { [key: string]: KlipingRecord[] } = {};
   records.forEach(record => {
-    const key = record.Pengamatan_ke || '0';
+    const key = record.pengamatan_ke || '0';
     if (!groupedByPengamatan[key]) {
       groupedByPengamatan[key] = [];
     }
@@ -441,7 +441,7 @@ const generateExcelBuffer = async (records: KlipingRecord[]): Promise<ArrayBuffe
 
   Object.keys(groupedByPengamatan).forEach(key => {
     groupedByPengamatan[key].sort((a, b) => {
-      return sortMesinNumber(a.Mesin || '') - sortMesinNumber(b.Mesin || '');
+      return sortMesinNumber(a.mesin || '') - sortMesinNumber(b.mesin || '');
     });
   });
 
@@ -530,7 +530,7 @@ const generateExcelBuffer = async (records: KlipingRecord[]): Promise<ArrayBuffe
 
     const firstRecordOfPengamatan = recordsForPengamatan[0];
     const flavorCell = worksheet.getCell(headerRow + 1, startCol);
-    flavorCell.value = `${firstRecordOfPengamatan.Flavor} (${formatTime(firstRecordOfPengamatan.pengamatan_timestamp)})`;
+    flavorCell.value = `${firstRecordOfPengamatan.flavor} (${formatTime(firstRecordOfPengamatan.pengamatan_timestamp)})`;
     flavorCell.font = { bold: true, size: 10 };
     flavorCell.alignment = { horizontal: 'center', vertical: 'middle' };
     flavorCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
@@ -543,7 +543,7 @@ const generateExcelBuffer = async (records: KlipingRecord[]): Promise<ArrayBuffe
 
     recordsForPengamatan.forEach((record, idx) => {
       const mesinCell = worksheet.getCell(headerRow + 2, startCol + idx);
-      mesinCell.value = record.Mesin?.toUpperCase() || 'N/A';
+      mesinCell.value = record.mesin?.toUpperCase() || 'N/A';
       mesinCell.font = { bold: true, size: 9 };
       mesinCell.alignment = { horizontal: 'center', vertical: 'middle' };
       mesinCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDE9D9' } };
@@ -647,7 +647,7 @@ export const exportKlipingToPDF = async (records: KlipingRecord[]): Promise<bool
 
     const groupedByPengamatan: { [key: string]: KlipingRecord[] } = {};
     records.forEach(record => {
-      const key = record.Pengamatan_ke || '0';
+      const key = record.pengamatan_ke || '0';
       if (!groupedByPengamatan[key]) {
         groupedByPengamatan[key] = [];
       }
@@ -656,7 +656,7 @@ export const exportKlipingToPDF = async (records: KlipingRecord[]): Promise<bool
 
     Object.keys(groupedByPengamatan).forEach(key => {
       groupedByPengamatan[key].sort((a, b) => {
-        return sortMesinNumber(a.Mesin || '') - sortMesinNumber(b.Mesin || '');
+        return sortMesinNumber(a.mesin || '') - sortMesinNumber(b.mesin || '');
       });
     });
 
@@ -738,7 +738,7 @@ export const exportKlipingToPDF = async (records: KlipingRecord[]): Promise<bool
 
     const pengamatanGroups: { [key: string]: KlipingRecord[] } = {};
     recordsWithPhotos.forEach(record => {
-      const key = record.Pengamatan_ke || '0';
+      const key = record.pengamatan_ke || '0';
       if (!pengamatanGroups[key]) {
         pengamatanGroups[key] = [];
       }
@@ -769,7 +769,7 @@ export const exportKlipingToPDF = async (records: KlipingRecord[]): Promise<bool
         pdf.rect(xPosition, yPosition + 6, groupWidth, 6, 'FD');
         pdf.setFontSize(8);
         pdf.text(
-          `${firstRecord.Flavor} (${formatTime(firstRecord.pengamatan_timestamp)})`,
+          `${firstRecord.flavor} (${formatTime(firstRecord.pengamatan_timestamp)})`,
           xPosition + groupWidth / 2,
           yPosition + 10,
           { align: 'center' }
@@ -783,7 +783,7 @@ export const exportKlipingToPDF = async (records: KlipingRecord[]): Promise<bool
           pdf.setFontSize(7);
           pdf.setFont('helvetica', 'bold');
           pdf.text(
-            record.Mesin?.toUpperCase() || 'N/A',
+            record.mesin?.toUpperCase() || 'N/A',
             mesinX + cellWidth / 2,
             yPosition + 15.5,
             { align: 'center' }
@@ -1039,7 +1039,7 @@ const generatePDFBlob = async (records: KlipingRecord[]): Promise<Blob> => {
 
   const groupedByPengamatan: { [key: string]: KlipingRecord[] } = {};
   records.forEach(record => {
-    const key = record.Pengamatan_ke || '0';
+    const key = record.pengamatan_ke || '0';
     if (!groupedByPengamatan[key]) {
       groupedByPengamatan[key] = [];
     }
@@ -1048,7 +1048,7 @@ const generatePDFBlob = async (records: KlipingRecord[]): Promise<Blob> => {
 
   Object.keys(groupedByPengamatan).forEach(key => {
     groupedByPengamatan[key].sort((a, b) => {
-      return sortMesinNumber(a.Mesin || '') - sortMesinNumber(b.Mesin || '');
+      return sortMesinNumber(a.mesin || '') - sortMesinNumber(b.mesin || '');
     });
   });
 
@@ -1130,7 +1130,7 @@ const generatePDFBlob = async (records: KlipingRecord[]): Promise<Blob> => {
 
   const pengamatanGroups: { [key: string]: KlipingRecord[] } = {};
   recordsWithPhotos.forEach(record => {
-    const key = record.Pengamatan_ke || '0';
+    const key = record.pengamatan_ke || '0';
     if (!pengamatanGroups[key]) {
       pengamatanGroups[key] = [];
     }
@@ -1161,7 +1161,7 @@ const generatePDFBlob = async (records: KlipingRecord[]): Promise<Blob> => {
       pdf.rect(xPosition, yPosition + 6, groupWidth, 6, 'FD');
       pdf.setFontSize(8);
       pdf.text(
-        `${firstRecord.Flavor} (${formatTime(firstRecord.pengamatan_timestamp)})`,
+        `${firstRecord.flavor} (${formatTime(firstRecord.pengamatan_timestamp)})`,
         xPosition + groupWidth / 2,
         yPosition + 10,
         { align: 'center' }
@@ -1175,7 +1175,7 @@ const generatePDFBlob = async (records: KlipingRecord[]): Promise<Blob> => {
         pdf.setFontSize(7);
         pdf.setFont('helvetica', 'bold');
         pdf.text(
-          record.Mesin?.toUpperCase() || 'N/A',
+          record.mesin?.toUpperCase() || 'N/A',
           mesinX + cellWidth / 2,
           yPosition + 15.5,
           { align: 'center' }

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Camera, Upload, Trash2, Eye, Edit, X } from 'lucide-react';
+import { ArrowLeft, Camera, Upload, Trash2, Eye, Edit, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { MonitoringRecord, saveMonitoringRecord, getMonitoringRecords, AREA_OPTIONS } from '../utils/monitoringDatabase';
 import { CameraManager } from '../utils/camera';
 
@@ -23,6 +23,7 @@ interface DataEntry {
 interface AreaData {
   area: string;
   entries: DataEntry[];
+  expanded: boolean;
 }
 
 const CreateMonitoringScreen: React.FC = () => {
@@ -91,7 +92,8 @@ const CreateMonitoringScreen: React.FC = () => {
 
       const areasData: AreaData[] = Object.entries(areaMap).map(([area, entries]) => ({
         area,
-        entries: entries.sort((a, b) => a.data_number - b.data_number)
+        entries: entries.sort((a, b) => a.data_number - b.data_number),
+        expanded: true
       }));
 
       setSavedAreas(areasData);
@@ -149,7 +151,8 @@ const CreateMonitoringScreen: React.FC = () => {
             data_number: currentDataNumber,
             foto_url: currentFoto,
             keterangan: currentKeterangan
-          }]
+          }],
+          expanded: true
         }]);
       }
     }
@@ -183,14 +186,29 @@ const CreateMonitoringScreen: React.FC = () => {
     }
   };
 
+  const handleToggleArea = (areaIndex: number) => {
+    const updatedAreas = [...savedAreas];
+    updatedAreas[areaIndex].expanded = !updatedAreas[areaIndex].expanded;
+    setSavedAreas(updatedAreas);
+  };
+
   const handleCameraClick = async () => {
     setCameraVisible(true);
     setCameraError('');
 
+    // Wait for video element to be rendered
+    await new Promise(resolve => setTimeout(resolve, 100));
+
     try {
-      if (!videoRef.current) return;
+      if (!videoRef.current) {
+        setCameraError('Video element tidak tersedia');
+        return;
+      }
       cameraManager.current = new CameraManager();
-      await cameraManager.current.startCamera(videoRef.current);
+      const success = await cameraManager.current.startCamera(videoRef.current);
+      if (!success) {
+        setCameraError('Gagal mengakses kamera');
+      }
     } catch (error: any) {
       setCameraError(error.message || 'Gagal mengakses kamera');
     }
@@ -265,11 +283,7 @@ const CreateMonitoringScreen: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
-  const handleSimpanSementara = () => {
-    alert('Data tersimpan sementara di aplikasi');
-  };
-
-  const handleSimpanSemua = async () => {
+  const handleSimpanSementara = async () => {
     if (savedAreas.length === 0) {
       alert('Tidak ada data untuk disimpan');
       return;
@@ -280,7 +294,6 @@ const CreateMonitoringScreen: React.FC = () => {
       for (const areaData of savedAreas) {
         for (const entry of areaData.entries) {
           if (entry.id) {
-            // Update existing record - not implemented yet in monitoringDatabase
             continue;
           }
 
@@ -294,6 +307,48 @@ const CreateMonitoringScreen: React.FC = () => {
             data_number: entry.data_number,
             foto_url: entry.foto_url,
             keterangan: entry.keterangan,
+            status: 'draft',
+            created_by: currentUser.name || currentUser.username
+          };
+
+          await saveMonitoringRecord(record);
+        }
+      }
+
+      alert('Data tersimpan sebagai draft!');
+      navigate('/monitoring-records', { state: { selectedPlant: plant } });
+    } catch (error: any) {
+      alert('Error menyimpan data: ' + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSimpanSemua = async () => {
+    if (savedAreas.length === 0) {
+      alert('Tidak ada data untuk disimpan');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      for (const areaData of savedAreas) {
+        for (const entry of areaData.entries) {
+          if (entry.id) {
+            continue;
+          }
+
+          const record: Partial<MonitoringRecord> = {
+            plant,
+            tanggal,
+            line,
+            regu,
+            shift,
+            area: areaData.area,
+            data_number: entry.data_number,
+            foto_url: entry.foto_url,
+            keterangan: entry.keterangan,
+            status: 'complete',
             created_by: currentUser.name || currentUser.username
           };
 
@@ -728,19 +783,35 @@ const CreateMonitoringScreen: React.FC = () => {
             padding: '24px',
             marginBottom: '20px'
           }}>
-            <h3 style={{
-              fontSize: '18px',
-              fontWeight: '700',
-              color: '#1a202c',
-              marginBottom: '16px',
-              paddingBottom: '12px',
-              borderBottom: '2px solid #ffedd5'
-            }}>
-              Area: {areaData.area} ({areaData.entries.length} data)
-            </h3>
+            <button
+              onClick={() => handleToggleArea(areaIndex)}
+              style={{
+                width: '100%',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'transparent',
+                border: 'none',
+                padding: '0 0 12px 0',
+                marginBottom: '16px',
+                borderBottom: '2px solid #ffedd5',
+                cursor: 'pointer'
+              }}
+            >
+              <h3 style={{
+                fontSize: '18px',
+                fontWeight: '700',
+                color: '#1a202c',
+                margin: 0
+              }}>
+                Area: {areaData.area} ({areaData.entries.length} data)
+              </h3>
+              {areaData.expanded ? <ChevronUp size={24} color="#f97316" /> : <ChevronDown size={24} color="#f97316" />}
+            </button>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {areaData.entries.map((entry, entryIndex) => (
+            {areaData.expanded && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {areaData.entries.map((entry, entryIndex) => (
                 <div key={entryIndex} style={{
                   padding: '16px',
                   background: '#fff7ed',
@@ -821,7 +892,8 @@ const CreateMonitoringScreen: React.FC = () => {
                   )}
                 </div>
               ))}
-            </div>
+              </div>
+            )}
           </div>
         ))}
 

@@ -135,9 +135,9 @@ const CreateKlipingScreen: React.FC = () => {
     const pengamatanMap: { [key: string]: PengamatanData } = {};
 
     records.forEach(record => {
-      const pengNum = record.Pengamatan_ke || '';
-      const flav = record.Flavor || '';
-      const mes = record.Mesin || '';
+      const pengNum = String(record.pengamatan_ke || '');
+      const flav = record.flavor || '';
+      const mes = record.mesin || '';
 
       if (!pengNum || !flav || !mes) return;
 
@@ -455,8 +455,8 @@ const CreateKlipingScreen: React.FC = () => {
         line,
         regu,
         shift,
-        Pengamatan_ke: pengamatanNum,
-        Mesin: mesin
+        pengamatan_ke: parseInt(pengamatanNum),
+        mesin: mesin
       });
 
       if (photos) {
@@ -490,8 +490,8 @@ const CreateKlipingScreen: React.FC = () => {
         line,
         regu,
         shift,
-        Pengamatan_ke: pengamatan,
-        Mesin: mesin
+        pengamatan_ke: parseInt(pengamatan),
+        mesin: mesin
       });
 
       if (photos) {
@@ -533,8 +533,8 @@ const CreateKlipingScreen: React.FC = () => {
       line,
       regu,
       shift,
-      Pengamatan_ke: pengamatanData.number,
-      Mesin: mesin
+      pengamatan_ke: parseInt(pengamatanData.number),
+      mesin: mesin
     };
 
     console.log('[PREVIEW] Fetching photos with filters:', filters);
@@ -594,8 +594,8 @@ const CreateKlipingScreen: React.FC = () => {
             line,
             regu,
             shift,
-            Pengamatan_ke: peng.number,
-            Mesin: mesin
+            pengamatan_ke: parseInt(peng.number),
+            mesin: mesin
           });
 
           if (photos) {
@@ -727,9 +727,9 @@ const CreateKlipingScreen: React.FC = () => {
             line,
             regu,
             shift,
-            Pengamatan_ke: peng.number,
-            Flavor: peng.flavor,
-            Mesin: mesin,
+            pengamatan_ke: parseInt(peng.number),
+            flavor: peng.flavor,
+            mesin: mesin,
             pengamatan_timestamp: peng.timestamp,
             created_by: getCurrentUser(),
             is_complete: true
@@ -1286,7 +1286,7 @@ const CreateKlipingScreen: React.FC = () => {
                     {peng.mesins.length > 0 && (
                       <div style={{ marginTop: '8px' }}>
                         <p style={{ fontSize: '12px', color: '#047857', marginBottom: '6px', fontWeight: '500' }}>
-                          Mesin:
+                          mesin:
                         </p>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                           {peng.mesins.map((mesin, mIdx) => (

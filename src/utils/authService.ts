@@ -147,6 +147,27 @@ class AuthService {
         .select('permission')
         .eq('user_id', user.id);
 
+      // Ensure allowed_menus and allowed_plants are arrays
+      let allowedMenus = user.allowed_menus || [];
+      let allowedPlants = user.allowed_plants || [];
+
+      // Parse JSON strings if needed
+      if (typeof allowedMenus === 'string') {
+        try {
+          allowedMenus = JSON.parse(allowedMenus);
+        } catch {
+          allowedMenus = [];
+        }
+      }
+
+      if (typeof allowedPlants === 'string') {
+        try {
+          allowedPlants = JSON.parse(allowedPlants);
+        } catch {
+          allowedPlants = [];
+        }
+      }
+
       const appUser: AppUser = {
         id: user.id,
         username: user.username,
@@ -154,8 +175,8 @@ class AuthService {
         role: user.role,
         is_active: user.is_active,
         permissions: permissions?.map(p => p.permission) || [],
-        allowed_menus: user.allowed_menus || [],
-        allowed_plants: user.allowed_plants || []
+        allowed_menus: Array.isArray(allowedMenus) ? allowedMenus : [],
+        allowed_plants: Array.isArray(allowedPlants) ? allowedPlants : []
       };
 
       this.currentUser = appUser;
@@ -206,12 +227,44 @@ class AuthService {
 
   getAllowedPlants(): string[] {
     const user = this.getCurrentUser();
-    return user?.allowed_plants || [];
+    const plants = user?.allowed_plants;
+
+    // Ensure we always return an array
+    if (!plants) return [];
+    if (Array.isArray(plants)) return plants;
+
+    // If it's a string (from localStorage), try to parse it
+    if (typeof plants === 'string') {
+      try {
+        const parsed = JSON.parse(plants);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+
+    return [];
   }
 
   getAllowedMenus(): string[] {
     const user = this.getCurrentUser();
-    return user?.allowed_menus || [];
+    const menus = user?.allowed_menus;
+
+    // Ensure we always return an array
+    if (!menus) return [];
+    if (Array.isArray(menus)) return menus;
+
+    // If it's a string (from localStorage), try to parse it
+    if (typeof menus === 'string') {
+      try {
+        const parsed = JSON.parse(menus);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+
+    return [];
   }
 
   isAdmin(): boolean {
@@ -235,9 +288,31 @@ class AuthService {
             .select('permission')
             .eq('user_id', user.id);
 
+          // Parse allowed_menus and allowed_plants from JSON strings
+          let allowedMenus = user.allowed_menus || [];
+          let allowedPlants = user.allowed_plants || [];
+
+          if (typeof allowedMenus === 'string') {
+            try {
+              allowedMenus = JSON.parse(allowedMenus);
+            } catch {
+              allowedMenus = [];
+            }
+          }
+
+          if (typeof allowedPlants === 'string') {
+            try {
+              allowedPlants = JSON.parse(allowedPlants);
+            } catch {
+              allowedPlants = [];
+            }
+          }
+
           return {
             ...user,
-            permissions: permissions?.map(p => p.permission) || []
+            permissions: permissions?.map(p => p.permission) || [],
+            allowed_menus: Array.isArray(allowedMenus) ? allowedMenus : [],
+            allowed_plants: Array.isArray(allowedPlants) ? allowedPlants : []
           };
         })
       );

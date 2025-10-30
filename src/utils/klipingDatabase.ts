@@ -2,7 +2,7 @@ import { supabase } from './supabase';
 import { KlipingRecord } from '../types/database';
 import { requestQueue } from './requestQueue';
 
-export const insertKlipingRecord = async (record: KlipingRecord, skipDuplicateCheck: boolean = false): Promise<{ success: boolean; id?: number; error?: string; skipped?: boolean }> => {
+export const insertKlipingRecord = async (record: KlipingRecord, skipDuplicateCheck: boolean = false): Promise<{ success: boolean; id?: string; error?: string; skipped?: boolean }> => {
   try {
     if (!skipDuplicateCheck) {
       const { data: existing, error: checkError } = await supabase
@@ -14,7 +14,7 @@ export const insertKlipingRecord = async (record: KlipingRecord, skipDuplicateCh
         .eq('regu', record.regu)
         .eq('shift', record.shift)
         .eq('id_unik', record.id_unik)
-        .eq('Mesin', record.Mesin)
+        .eq('mesin', record.mesin)
         .maybeSingle();
 
       if (checkError) {
@@ -25,7 +25,7 @@ export const insertKlipingRecord = async (record: KlipingRecord, skipDuplicateCh
       if (existing) {
         console.log('Record already exists, skipping:', {
           id_unik: record.id_unik,
-          Mesin: record.Mesin
+          mesin: record.mesin
         });
         return { success: true, id: existing.id, skipped: true };
       }
@@ -49,7 +49,7 @@ export const insertKlipingRecord = async (record: KlipingRecord, skipDuplicateCh
   }
 };
 
-export const updateKlipingRecord = async (id: number, updates: Partial<KlipingRecord>): Promise<{ success: boolean; error?: string }> => {
+export const updateKlipingRecord = async (id: string, updates: Partial<KlipingRecord>): Promise<{ success: boolean; error?: string }> => {
   try {
     const { error } = await supabase
       .from('kliping_records')
@@ -112,7 +112,7 @@ export const getKlipingRecords = async (filters?: {
 
     let query = supabase
       .from('kliping_records')
-      .select('id, id_unik, plant, tanggal, line, regu, shift, Flavor, Pengamatan_ke, Mesin, created_by, created_at, updated_at, is_complete, pengamatan_timestamp')
+      .select('id, id_unik, plant, tanggal, line, regu, shift, flavor, pengamatan_ke, mesin, created_by, created_at, updated_at, is_complete, pengamatan_timestamp')
       .order('created_at', { ascending: false });
 
     if (filters?.plant) {
@@ -168,7 +168,7 @@ export const getKlipingRecords = async (filters?: {
   }
 };
 
-export const getKlipingRecordById = async (id: number): Promise<KlipingRecord | null> => {
+export const getKlipingRecordById = async (id: string): Promise<KlipingRecord | null> => {
   try {
     const { data, error } = await supabase
       .from('kliping_records')
@@ -194,8 +194,8 @@ export const getKlipingRecordPhotos = async (filters: {
   line: string;
   regu: string;
   shift: string;
-  Pengamatan_ke: string;
-  Mesin: string;
+  pengamatan_ke: number;
+  mesin: string;
 }): Promise<Partial<KlipingRecord> | null> => {
   try {
     console.log('[KLIPING] Fetching photos for mesin with filters:', filters);
@@ -208,8 +208,8 @@ export const getKlipingRecordPhotos = async (filters: {
       .eq('line', filters.line)
       .eq('regu', filters.regu)
       .eq('shift', filters.shift)
-      .eq('Pengamatan_ke', filters.Pengamatan_ke)
-      .eq('Mesin', filters.Mesin)
+      .eq('pengamatan_ke', filters.pengamatan_ke)
+      .eq('mesin', filters.mesin)
       .maybeSingle();
 
     if (error) {
@@ -304,7 +304,7 @@ export const getKlipingRecordsWithPhotos = async (filters?: {
   }
 };
 
-export const deleteKlipingRecord = async (id: number): Promise<{ success: boolean; error?: string }> => {
+export const deleteKlipingRecord = async (id: string): Promise<{ success: boolean; error?: string }> => {
   try {
     const { error } = await supabase
       .from('kliping_records')

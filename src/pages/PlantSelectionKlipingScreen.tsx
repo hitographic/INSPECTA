@@ -15,7 +15,8 @@ const PlantSelectionKlipingScreen: React.FC = () => {
     }
 
     const allowedPlants = authService.getAllowedPlants();
-    setPlants(allowedPlants);
+    // Ensure we always set an array
+    setPlants(Array.isArray(allowedPlants) ? allowedPlants : []);
   }, [navigate]);
 
   const handlePlantSelect = (plant: string) => {

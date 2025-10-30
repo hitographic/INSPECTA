@@ -24,7 +24,7 @@ export interface PlantConfig {
 }
 
 export interface KlipingRecord {
-  id?: number;
+  id?: string;
   id_unik?: string;
   plant: string;
   tanggal: string;
@@ -32,9 +32,9 @@ export interface KlipingRecord {
   regu: string;
   shift: string;
 
-  Flavor?: string;
-  Pengamatan_ke?: string;
-  Mesin?: string;
+  flavor?: string;
+  pengamatan_ke?: number;
+  mesin?: string;
   pengamatan_timestamp?: string;
 
   foto_etiket?: string;

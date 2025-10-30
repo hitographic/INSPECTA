@@ -86,8 +86,8 @@ const KlipingRecordsScreen: React.FC = () => {
     });
 
     return Object.values(grouped).map(group => group.sort((a, b) => {
-      if (a.Pengamatan_ke && b.Pengamatan_ke) {
-        return parseInt(a.Pengamatan_ke) - parseInt(b.Pengamatan_ke);
+      if (a.pengamatan_ke && b.pengamatan_ke) {
+        return a.pengamatan_ke - b.pengamatan_ke;
       }
       return 0;
     }));
@@ -357,8 +357,8 @@ const KlipingRecordsScreen: React.FC = () => {
         line: record.line,
         regu: record.regu,
         shift: record.shift,
-        Pengamatan_ke: pengamatanKe,
-        Mesin: mesin
+        pengamatan_ke: parseInt(pengamatanKe),
+        mesin: mesin
       });
 
       if (photos) {
@@ -436,51 +436,59 @@ const KlipingRecordsScreen: React.FC = () => {
       return;
     }
 
-    if (!confirm('Hapus SEMUA data kliping untuk plant ini? Tindakan ini tidak bisa dibatalkan!')) {
+    const hasFilters = startDate || endDate || selectedLines.length > 0 || selectedRegus.length > 0 || selectedShifts.length > 0;
+    const filterDesc = [];
+    if (startDate) filterDesc.push(`Tanggal >= ${startDate}`);
+    if (endDate) filterDesc.push(`Tanggal <= ${endDate}`);
+    if (selectedLines.length > 0) filterDesc.push(`Line: ${selectedLines.join(', ')}`);
+    if (selectedRegus.length > 0) filterDesc.push(`Regu: ${selectedRegus.join(', ')}`);
+    if (selectedShifts.length > 0) filterDesc.push(`Shift: ${selectedShifts.join(', ')}`);
+
+    const confirmMessage = hasFilters
+      ? `Hapus data yang sesuai dengan filter berikut?\n\n${filterDesc.join('\n')}\n\nTotal: ${filteredRecords.length} record\n\nTindakan ini tidak bisa dibatalkan!`
+      : `Hapus SEMUA data kliping untuk ${plant}? Tindakan ini tidak bisa dibatalkan!`;
+
+    if (!confirm(confirmMessage)) {
       return;
     }
 
     try {
-      const { error } = await supabase
-        .from('kliping_records')
-        .delete()
-        .eq('plant', plant);
+      let query = supabase.from('kliping_records').delete();
 
-      if (error) throw error;
+      query = query.eq('plant', plant);
 
-      alert('Semua data berhasil dihapus');
-      await loadRecords();
-    } catch (error) {
-      console.error('Error deleting all records:', error);
-      alert('Gagal menghapus data');
-    }
-  };
+      if (startDate) {
+        query = query.gte('tanggal', startDate);
+      }
 
-  const handleDeleteRecord = async (recordId: number, tanggal: string) => {
-    if (!canDelete()) {
-      alert('Anda tidak memiliki akses untuk menghapus data');
-      return;
-    }
+      if (endDate) {
+        query = query.lte('tanggal', endDate);
+      }
 
-    if (!confirm(`Hapus data tanggal ${formatDate(tanggal)}?`)) {
-      return;
-    }
+      if (selectedLines.length > 0) {
+        query = query.in('line', selectedLines);
+      }
 
-    try {
-      const { error } = await supabase
-        .from('kliping_records')
-        .delete()
-        .eq('id', recordId);
+      if (selectedRegus.length > 0) {
+        query = query.in('regu', selectedRegus);
+      }
+
+      if (selectedShifts.length > 0) {
+        query = query.in('shift', selectedShifts);
+      }
+
+      const { error } = await query;
 
       if (error) throw error;
 
       alert('Data berhasil dihapus');
       await loadRecords();
     } catch (error) {
-      console.error('Error deleting record:', error);
+      console.error('Error deleting records:', error);
       alert('Gagal menghapus data');
     }
   };
+
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -987,15 +995,15 @@ const KlipingRecordsScreen: React.FC = () => {
                             const pengamatanMap: { [key: string]: { flavor: string; mesins: string[] } } = {};
 
                             group.forEach(record => {
-                              const key = record.Pengamatan_ke || '';
+                              const key = record.pengamatan_ke || '';
                               if (!pengamatanMap[key]) {
                                 pengamatanMap[key] = {
-                                  flavor: record.Flavor || '',
+                                  flavor: record.flavor || '',
                                   mesins: []
                                 };
                               }
 
-                              const mesinNum = record.Mesin?.replace('Mesin ', '') || '';
+                              const mesinNum = record.mesin?.replace('Mesin ', '') || '';
                               if (mesinNum && !pengamatanMap[key].mesins.includes(mesinNum)) {
                                 pengamatanMap[key].mesins.push(mesinNum);
                               }
@@ -1144,12 +1152,27 @@ const KlipingRecordsScreen: React.FC = () => {
                         <button
                           onClick={async () => {
                             if (confirm(`Hapus semua pengamatan untuk ${firstRecord.line} - Regu ${firstRecord.regu} - Shift ${firstRecord.shift}?`)) {
-                              for (const record of group) {
-                                if (record.id) {
-                                  await handleDeleteRecord(record.id, record.tanggal);
+                              try {
+                                const { error } = await supabase
+                                  .from('kliping_records')
+                                  .delete()
+                                  .eq('plant', plant)
+                                  .eq('tanggal', firstRecord.tanggal)
+                                  .eq('line', firstRecord.line)
+                                  .eq('regu', firstRecord.regu)
+                                  .eq('shift', firstRecord.shift);
+
+                                if (error) {
+                                  console.error('Error deleting session:', error);
+                                  alert('Gagal menghapus data');
+                                } else {
+                                  alert('Data berhasil dihapus');
+                                  await loadRecords();
                                 }
+                              } catch (error) {
+                                console.error('Error in delete operation:', error);
+                                alert('Gagal menghapus data');
                               }
-                              loadRecords();
                             }
                           }}
                         style={{
