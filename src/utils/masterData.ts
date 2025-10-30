@@ -42,6 +42,38 @@ export const getAreas = async (): Promise<Area[]> => {
   }
 };
 
+export const getAreaDisplayOrder = async (areaName: string): Promise<number> => {
+  try {
+    const { data, error } = await supabase
+      .from('sanitation_areas')
+      .select('display_order')
+      .eq('name', areaName)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data?.display_order || 999;
+  } catch (error) {
+    console.error('Error fetching area display order:', error);
+    return 999;
+  }
+};
+
+export const sortAreasByDisplayOrder = async (areaNames: string[]): Promise<string[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('sanitation_areas')
+      .select('name, display_order')
+      .in('name', areaNames)
+      .order('display_order', { ascending: true });
+
+    if (error) throw error;
+    return data?.map(a => a.name) || areaNames;
+  } catch (error) {
+    console.error('Error sorting areas:', error);
+    return areaNames;
+  }
+};
+
 export const getBagianByArea = async (areaId: string): Promise<Bagian[]> => {
   try {
     const { data, error } = await supabase

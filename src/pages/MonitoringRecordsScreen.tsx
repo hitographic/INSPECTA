@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Plus, FileDown, Trash2, Eye, X } from 'lucide-react';
-import { MonitoringRecord, getMonitoringRecords, deleteMonitoringSession, REGU_OPTIONS, SHIFT_OPTIONS } from '../utils/monitoringDatabase';
+import { MonitoringRecord, getMonitoringRecords, getMonitoringRecordsWithPhotos, deleteMonitoringSession, deleteMultipleMonitoringRecords, REGU_OPTIONS, SHIFT_OPTIONS } from '../utils/monitoringDatabase';
+import { authService } from '../utils/authService';
 import { exportMonitoringToExcel, exportMonitoringToPDF, exportAllMonitoringToExcel } from '../utils/monitoringExport';
 import { PLANTS } from '../constants/AppConstants';
 
@@ -173,21 +174,44 @@ const MonitoringRecordsScreen: React.FC = () => {
     });
   };
 
-  const handlePreview = (group: MonitoringRecord[]) => {
-    setPreviewRecords(group);
+  const handlePreview = async (group: MonitoringRecord[]) => {
+    if (!group.length) return;
+    const record = group[0];
+    const recordsWithPhotos = await getMonitoringRecordsWithPhotos(
+      record.plant,
+      record.tanggal,
+      record.line,
+      record.regu,
+      record.shift
+    );
+    setPreviewRecords(recordsWithPhotos);
     setPreviewModal(true);
   };
 
   const handleExportExcel = async (group: MonitoringRecord[]) => {
     if (!group.length) return;
     const record = group[0];
-    await exportMonitoringToExcel(group, record.plant, record.line, record.regu, record.shift);
+    const recordsWithPhotos = await getMonitoringRecordsWithPhotos(
+      record.plant,
+      record.tanggal,
+      record.line,
+      record.regu,
+      record.shift
+    );
+    await exportMonitoringToExcel(recordsWithPhotos, record.plant, record.line, record.regu, record.shift);
   };
 
   const handleExportPDF = async (group: MonitoringRecord[]) => {
     if (!group.length) return;
     const record = group[0];
-    await exportMonitoringToPDF(group, record.plant, record.line, record.regu, record.shift);
+    const recordsWithPhotos = await getMonitoringRecordsWithPhotos(
+      record.plant,
+      record.tanggal,
+      record.line,
+      record.regu,
+      record.shift
+    );
+    await exportMonitoringToPDF(recordsWithPhotos, record.plant, record.line, record.regu, record.shift);
   };
 
   const handleExportAllExcel = async () => {
@@ -199,6 +223,16 @@ const MonitoringRecordsScreen: React.FC = () => {
   };
 
   const handleDeleteAllFiltered = async () => {
+    const currentUser = authService.getCurrentUser();
+    console.log('Current user:', currentUser);
+    console.log('User permissions:', currentUser?.permissions);
+    console.log('Has delete_monitoring_records?', authService.hasPermission('delete_monitoring_records'));
+
+    if (!authService.hasPermission('delete_monitoring_records')) {
+      alert('Anda tidak memiliki izin untuk menghapus data monitoring. Silakan logout dan login kembali jika permission baru saja ditambahkan.');
+      return;
+    }
+
     if (filteredRecords.length === 0) {
       alert('Tidak ada data yang difilter');
       return;
@@ -207,7 +241,15 @@ const MonitoringRecordsScreen: React.FC = () => {
     const confirmed = window.confirm(`Hapus ${filteredRecords.length} data yang difilter?`);
     if (!confirmed) return;
 
-    alert('Fitur hapus massal belum diimplementasikan');
+    try {
+      const recordIds = filteredRecords.map(r => r.id);
+      await deleteMultipleMonitoringRecords(recordIds);
+      alert(`${filteredRecords.length} data berhasil dihapus`);
+      loadRecords();
+    } catch (error) {
+      console.error('Error deleting filtered records:', error);
+      alert('Gagal menghapus data');
+    }
   };
 
   const getSessionAreas = (group: MonitoringRecord[]) => {
@@ -552,7 +594,7 @@ const MonitoringRecordsScreen: React.FC = () => {
             )}
           </div>
 
-          {filteredRecords.length > 0 && (
+          {filteredRecords.length > 0 && authService.hasPermission('delete_monitoring_records') && (
             <button
               onClick={handleDeleteAllFiltered}
               style={{
@@ -747,27 +789,29 @@ const MonitoringRecordsScreen: React.FC = () => {
                       >
                         Edit
                       </button>
-                      <button
-                        onClick={() => handleDeleteSession(group)}
-                        style={{
-                          gridColumn: '1 / -1',
-                          padding: '10px',
-                          background: '#ef4444',
-                          border: 'none',
-                          borderRadius: '8px',
-                          color: 'white',
-                          fontSize: '13px',
-                          fontWeight: '600',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '4px',
-                        }}
-                      >
-                        <Trash2 size={16} />
-                        Del
-                      </button>
+                      {authService.hasPermission('delete_monitoring_records') && (
+                        <button
+                          onClick={() => handleDeleteSession(group)}
+                          style={{
+                            gridColumn: '1 / -1',
+                            padding: '10px',
+                            background: '#ef4444',
+                            border: 'none',
+                            borderRadius: '8px',
+                            color: 'white',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <Trash2 size={16} />
+                          Del
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

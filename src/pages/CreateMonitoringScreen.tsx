@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Camera, Upload, Trash2, Eye, Edit, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { MonitoringRecord, saveMonitoringRecord, getMonitoringRecords, AREA_OPTIONS } from '../utils/monitoringDatabase';
 import { CameraManager } from '../utils/camera';
+import { sortAreasByDisplayOrder } from '../utils/masterData';
 
 interface LocationState {
   plant: string;
@@ -90,9 +91,12 @@ const CreateMonitoringScreen: React.FC = () => {
         });
       });
 
-      const areasData: AreaData[] = Object.entries(areaMap).map(([area, entries]) => ({
+      const areaNames = Object.keys(areaMap);
+      const sortedAreaNames = await sortAreasByDisplayOrder(areaNames);
+
+      const areasData: AreaData[] = sortedAreaNames.map(area => ({
         area,
-        entries: entries.sort((a, b) => a.data_number - b.data_number),
+        entries: areaMap[area].sort((a, b) => a.data_number - b.data_number),
         expanded: true
       }));
 

@@ -47,7 +47,7 @@ export const getMonitoringRecords = async (
   try {
     let query = supabase
       .from('monitoring_records')
-      .select('*')
+      .select('id, plant, tanggal, line, regu, shift, area, data_number, keterangan, status, created_by, created_at, updated_at')
       .eq('plant', plant)
       .order('tanggal', { ascending: false })
       .order('data_number', { ascending: true });
@@ -71,9 +71,38 @@ export const getMonitoringRecords = async (
     const { data, error } = await query;
 
     if (error) throw error;
-    return data || [];
+    return (data || []).map(record => ({
+      ...record,
+      foto_url: null
+    }));
   } catch (error) {
     console.error('Error fetching monitoring records:', error);
+    throw error;
+  }
+};
+
+export const getMonitoringRecordsWithPhotos = async (
+  plant: string,
+  tanggal: string,
+  line: string,
+  regu: string,
+  shift: string
+): Promise<MonitoringRecord[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('monitoring_records')
+      .select('*')
+      .eq('plant', plant)
+      .eq('tanggal', tanggal)
+      .eq('line', line)
+      .eq('regu', regu)
+      .eq('shift', shift)
+      .order('data_number', { ascending: true });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching monitoring records with photos:', error);
     throw error;
   }
 };
@@ -148,6 +177,22 @@ export const deleteMonitoringSession = async (
     if (error) throw error;
   } catch (error) {
     console.error('Error deleting monitoring session:', error);
+    throw error;
+  }
+};
+
+export const deleteMultipleMonitoringRecords = async (
+  recordIds: string[]
+): Promise<void> => {
+  try {
+    const { error } = await supabase
+      .from('monitoring_records')
+      .delete()
+      .in('id', recordIds);
+
+    if (error) throw error;
+  } catch (error) {
+    console.error('Error deleting multiple monitoring records:', error);
     throw error;
   }
 };

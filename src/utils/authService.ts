@@ -25,7 +25,8 @@ const DEFAULT_USERS = [
       'save_all_draft_to_completed',
       'export_records',
       'manage_users',
-      'view_admin_panel'
+      'view_admin_panel',
+      'delete_monitoring_records'
     ]
   },
   {

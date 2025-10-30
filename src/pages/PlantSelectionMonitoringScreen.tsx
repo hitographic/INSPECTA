@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
+import { authService } from '../utils/authService';
 
 interface Plant {
   id: number;
@@ -18,12 +19,23 @@ const PlantSelectionMonitoringScreen: React.FC = () => {
 
   const loadPlants = async () => {
     try {
-      const plantsData = [
+      const currentUser = authService.getCurrentUser();
+      const allPlants = [
         { id: 1, name: 'Plant-1' },
         { id: 2, name: 'Plant-2' },
         { id: 3, name: 'Plant-3' }
       ];
-      setPlants(plantsData);
+
+      // Filter plants based on user's allowed_plants
+      if (currentUser?.allowed_plants && currentUser.allowed_plants.length > 0) {
+        const filteredPlants = allPlants.filter(plant =>
+          currentUser.allowed_plants.includes(plant.name)
+        );
+        setPlants(filteredPlants);
+      } else {
+        // If no restriction, show all plants
+        setPlants(allPlants);
+      }
     } catch (error) {
       console.error('Error loading plants:', error);
     } finally {
