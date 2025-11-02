@@ -111,21 +111,48 @@ export const getBagianByAreaName = async (areaName: string): Promise<Bagian[]> =
 
 export const getBagianForLine = async (lineNumber: string): Promise<{ [areaName: string]: Bagian[] }> => {
   try {
+    // Fetch all bagian with their areas
     const { data: bagianData, error: bagianError } = await supabase
       .from('sanitation_bagian')
       .select(`
         *,
         sanitation_areas(name, display_order)
-      `)
-      .contains('line_numbers', [lineNumber]);
+      `);
 
     if (bagianError) throw bagianError;
 
+    // Filter in JavaScript since .contains() has JSON parsing issues
+    const filteredData = bagianData?.filter((item: any) => {
+      let lineNumbers = item.line_numbers || [];
+
+      // Parse if it's a string (JSONB columns may return as strings)
+      if (typeof lineNumbers === 'string') {
+        try {
+          lineNumbers = JSON.parse(lineNumbers);
+        } catch (e) {
+          console.error('Failed to parse line_numbers for:', item.name);
+          return false;
+        }
+      }
+
+      return Array.isArray(lineNumbers) && lineNumbers.includes(lineNumber);
+    });
+
     const grouped: { [areaName: string]: { bagian: Bagian[], areaOrder: number } } = {};
 
-    bagianData?.forEach((item: any) => {
+    filteredData?.forEach((item: any) => {
       const areaName = item.sanitation_areas?.name || 'Unknown';
       const areaOrder = item.sanitation_areas?.display_order || 999;
+
+      // Parse line_numbers if needed
+      let lineNumbers = item.line_numbers || [];
+      if (typeof lineNumbers === 'string') {
+        try {
+          lineNumbers = JSON.parse(lineNumbers);
+        } catch (e) {
+          lineNumbers = [];
+        }
+      }
 
       if (!grouped[areaName]) {
         grouped[areaName] = { bagian: [], areaOrder };
@@ -135,7 +162,7 @@ export const getBagianForLine = async (lineNumber: string): Promise<{ [areaName:
         area_id: item.area_id,
         name: item.name,
         keterangan: item.keterangan,
-        line_numbers: item.line_numbers,
+        line_numbers: lineNumbers,
         display_order: item.display_order
       });
     });
