@@ -7,9 +7,7 @@ import { sortAreasByDisplayOrder } from './masterData';
 export const exportMonitoringToExcel = async (
   records: MonitoringRecord[],
   _plant: string,
-  line: string,
-  regu: string,
-  shift: string
+  line: string
 ): Promise<void> => {
   if (records.length === 0) {
     alert('Tidak ada data untuk diekspor');
@@ -37,7 +35,6 @@ export const exportMonitoringToExcel = async (
     const headerInfo = [
       ['Tanggal', tanggalInput],
       ['Line', line],
-      ['Regu/Shift', `${regu}${shift}`],
       ['QC Proses', createdBy]
     ];
 
@@ -150,7 +147,7 @@ export const exportMonitoringToExcel = async (
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Laporan_Monitoring_${line}_Regu${regu}_Shift${shift}_${new Date().getTime()}.xlsx`;
+    link.download = `Laporan_Monitoring_${line}_${new Date().getTime()}.xlsx`;
     link.click();
     window.URL.revokeObjectURL(url);
 
@@ -164,9 +161,7 @@ export const exportMonitoringToExcel = async (
 export const exportMonitoringToPDF = async (
   records: MonitoringRecord[],
   _plant: string,
-  line: string,
-  regu: string,
-  shift: string
+  line: string
 ): Promise<void> => {
   if (records.length === 0) {
     alert('Tidak ada data untuk diekspor');
@@ -224,12 +219,6 @@ export const exportMonitoringToPDF = async (
       pdf.text('Line', margin, yPosition);
       pdf.setFont('helvetica', 'normal');
       pdf.text(`: ${line}`, margin + 25, yPosition);
-      yPosition += 6;
-
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('Regu/Shift', margin, yPosition);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text(`: ${regu}${shift}`, margin + 25, yPosition);
       yPosition += 6;
 
       pdf.setFont('helvetica', 'bold');
@@ -381,7 +370,7 @@ export const exportMonitoringToPDF = async (
       );
     }
 
-    pdf.save(`Laporan_Monitoring_${line}_Regu${regu}_Shift${shift}_${new Date().getTime()}.pdf`);
+    pdf.save(`Laporan_Monitoring_${line}_${new Date().getTime()}.pdf`);
 
     const loading = document.getElementById('pdf-loading');
     if (loading) {
@@ -419,8 +408,6 @@ export const exportAllMonitoringToExcel = async (
       { header: 'Tanggal', key: 'tanggal', width: 15 },
       { header: 'Plant', key: 'plant', width: 12 },
       { header: 'Line', key: 'line', width: 12 },
-      { header: 'Regu', key: 'regu', width: 10 },
-      { header: 'Shift', key: 'shift', width: 10 },
       { header: 'Area', key: 'area', width: 20 },
       { header: 'Data Ke', key: 'data_number', width: 10 },
       { header: 'Keterangan', key: 'keterangan', width: 40 },
@@ -441,8 +428,6 @@ export const exportAllMonitoringToExcel = async (
         tanggal: new Date(record.tanggal).toLocaleDateString('id-ID'),
         plant: record.plant,
         line: record.line,
-        regu: record.regu,
-        shift: record.shift,
         area: record.area,
         data_number: record.data_number,
         keterangan: record.keterangan || '',

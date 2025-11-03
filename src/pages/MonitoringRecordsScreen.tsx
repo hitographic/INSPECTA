@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Plus, FileDown, Trash2, Eye, X } from 'lucide-react';
-import { MonitoringRecord, getMonitoringRecords, getMonitoringRecordsWithPhotos, deleteMonitoringSession, deleteMultipleMonitoringRecords, REGU_OPTIONS, SHIFT_OPTIONS } from '../utils/monitoringDatabase';
+import { MonitoringRecord, getMonitoringRecords, getMonitoringRecordsWithPhotos, deleteMonitoringSession, deleteMultipleMonitoringRecords } from '../utils/monitoringDatabase';
 import { authService } from '../utils/authService';
 import { exportMonitoringToExcel, exportMonitoringToPDF, exportAllMonitoringToExcel } from '../utils/monitoringExport';
 import { PLANTS } from '../constants/AppConstants';
@@ -22,16 +22,10 @@ const MonitoringRecordsScreen: React.FC = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedLines, setSelectedLines] = useState<string[]>([]);
-  const [selectedRegus, setSelectedRegus] = useState<string[]>([]);
-  const [selectedShifts, setSelectedShifts] = useState<string[]>([]);
   const [showLineDropdown, setShowLineDropdown] = useState(false);
-  const [showReguDropdown, setShowReguDropdown] = useState(false);
-  const [showShiftDropdown, setShowShiftDropdown] = useState(false);
 
   const [showCreatePopup, setShowCreatePopup] = useState(false);
   const [tempLine, setTempLine] = useState('');
-  const [tempRegu, setTempRegu] = useState('');
-  const [tempShift, setTempShift] = useState('');
   const [tempTanggal, setTempTanggal] = useState(new Date().toISOString().split('T')[0]);
 
   const [currentPage, setCurrentPage] = useState(1);
@@ -50,7 +44,7 @@ const MonitoringRecordsScreen: React.FC = () => {
   useEffect(() => {
     applyFilters();
     setCurrentPage(1);
-  }, [records, startDate, endDate, selectedLines, selectedRegus, selectedShifts]);
+  }, [records, startDate, endDate, selectedLines]);
 
   const loadRecords = async () => {
     setLoading(true);
@@ -77,12 +71,6 @@ const MonitoringRecordsScreen: React.FC = () => {
     if (selectedLines.length > 0) {
       filtered = filtered.filter(r => selectedLines.includes(r.line));
     }
-    if (selectedRegus.length > 0) {
-      filtered = filtered.filter(r => selectedRegus.includes(r.regu));
-    }
-    if (selectedShifts.length > 0) {
-      filtered = filtered.filter(r => selectedShifts.includes(r.shift));
-    }
 
     setFilteredRecords(filtered);
   };
@@ -91,7 +79,7 @@ const MonitoringRecordsScreen: React.FC = () => {
     const grouped: { [key: string]: MonitoringRecord[] } = {};
 
     records.forEach(record => {
-      const key = `${record.tanggal}_${record.line}_${record.regu}_${record.shift}`;
+      const key = `${record.tanggal}_${record.line}`;
       if (!grouped[key]) {
         grouped[key] = [];
       }
@@ -112,7 +100,7 @@ const MonitoringRecordsScreen: React.FC = () => {
   };
 
   const handleCreateConfirm = () => {
-    if (!tempTanggal || !tempLine || !tempRegu || !tempShift) {
+    if (!tempTanggal || !tempLine) {
       alert('Harap lengkapi semua field');
       return;
     }
@@ -122,9 +110,7 @@ const MonitoringRecordsScreen: React.FC = () => {
       state: {
         plant: selectedPlant,
         tanggal: tempTanggal,
-        line: tempLine,
-        regu: tempRegu,
-        shift: tempShift
+        line: tempLine
       }
     });
   };
@@ -136,9 +122,7 @@ const MonitoringRecordsScreen: React.FC = () => {
     const confirmDelete = window.confirm(
       `Apakah Anda yakin ingin menghapus semua data monitoring untuk:\n` +
       `Tanggal: ${new Date(record.tanggal).toLocaleDateString('id-ID')}\n` +
-      `Line: ${record.line}\n` +
-      `Regu: ${record.regu}\n` +
-      `Shift: ${record.shift}`
+      `Line: ${record.line}`
     );
 
     if (!confirmDelete) return;
@@ -147,9 +131,7 @@ const MonitoringRecordsScreen: React.FC = () => {
       await deleteMonitoringSession(
         record.plant,
         record.tanggal,
-        record.line,
-        record.regu,
-        record.shift
+        record.line
       );
       alert('Data berhasil dihapus');
       loadRecords();
@@ -167,8 +149,6 @@ const MonitoringRecordsScreen: React.FC = () => {
         plant: record.plant,
         tanggal: record.tanggal,
         line: record.line,
-        regu: record.regu,
-        shift: record.shift,
         editMode: true
       }
     });
@@ -180,9 +160,7 @@ const MonitoringRecordsScreen: React.FC = () => {
     const recordsWithPhotos = await getMonitoringRecordsWithPhotos(
       record.plant,
       record.tanggal,
-      record.line,
-      record.regu,
-      record.shift
+      record.line
     );
     setPreviewRecords(recordsWithPhotos);
     setPreviewModal(true);
@@ -194,11 +172,9 @@ const MonitoringRecordsScreen: React.FC = () => {
     const recordsWithPhotos = await getMonitoringRecordsWithPhotos(
       record.plant,
       record.tanggal,
-      record.line,
-      record.regu,
-      record.shift
+      record.line
     );
-    await exportMonitoringToExcel(recordsWithPhotos, record.plant, record.line, record.regu, record.shift);
+    await exportMonitoringToExcel(recordsWithPhotos, record.plant, record.line);
   };
 
   const handleExportPDF = async (group: MonitoringRecord[]) => {
@@ -207,11 +183,9 @@ const MonitoringRecordsScreen: React.FC = () => {
     const recordsWithPhotos = await getMonitoringRecordsWithPhotos(
       record.plant,
       record.tanggal,
-      record.line,
-      record.regu,
-      record.shift
+      record.line
     );
-    await exportMonitoringToPDF(recordsWithPhotos, record.plant, record.line, record.regu, record.shift);
+    await exportMonitoringToPDF(recordsWithPhotos, record.plant, record.line);
   };
 
   const handleExportAllExcel = async () => {
@@ -458,142 +432,6 @@ const MonitoringRecordsScreen: React.FC = () => {
             )}
           </div>
 
-          <div style={{ marginBottom: '24px', position: 'relative' }}>
-            <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#4a5568', marginBottom: '8px' }}>
-              Filter by Regu
-            </label>
-            <div
-              onClick={() => setShowReguDropdown(!showReguDropdown)}
-              style={{
-                width: '100%',
-                padding: '12px',
-                borderRadius: '12px',
-                border: '2px solid #fed7aa',
-                fontSize: '14px',
-                cursor: 'pointer',
-                backgroundColor: '#fff',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }}
-            >
-              <span>{selectedRegus.length === 0 ? 'Semua Regu' : selectedRegus.join(', ')}</span>
-              <span style={{ transform: showReguDropdown ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>▼</span>
-            </div>
-            {showReguDropdown && (
-              <div style={{
-                position: 'absolute',
-                top: '100%',
-                left: 0,
-                right: 0,
-                backgroundColor: '#fff',
-                border: '2px solid #fed7aa',
-                borderRadius: '12px',
-                marginTop: '4px',
-                zIndex: 10,
-                boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
-              }}>
-                {REGU_OPTIONS.map(regu => (
-                  <div
-                    key={regu}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (selectedRegus.includes(regu)) {
-                        setSelectedRegus(selectedRegus.filter(r => r !== regu));
-                      } else {
-                        setSelectedRegus([...selectedRegus, regu]);
-                      }
-                    }}
-                    style={{
-                      padding: '12px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      backgroundColor: selectedRegus.includes(regu) ? '#ffedd5' : 'transparent'
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedRegus.includes(regu)}
-                      onChange={() => {}}
-                      style={{ cursor: 'pointer', width: '16px', height: '16px' }}
-                    />
-                    <span>{regu}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div style={{ marginBottom: '24px', position: 'relative' }}>
-            <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#4a5568', marginBottom: '8px' }}>
-              Filter by Shift
-            </label>
-            <div
-              onClick={() => setShowShiftDropdown(!showShiftDropdown)}
-              style={{
-                width: '100%',
-                padding: '12px',
-                borderRadius: '12px',
-                border: '2px solid #fed7aa',
-                fontSize: '14px',
-                cursor: 'pointer',
-                backgroundColor: '#fff',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }}
-            >
-              <span>{selectedShifts.length === 0 ? 'Semua Shift' : selectedShifts.join(', ')}</span>
-              <span style={{ transform: showShiftDropdown ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>▼</span>
-            </div>
-            {showShiftDropdown && (
-              <div style={{
-                position: 'absolute',
-                top: '100%',
-                left: 0,
-                right: 0,
-                backgroundColor: '#fff',
-                border: '2px solid #fed7aa',
-                borderRadius: '12px',
-                marginTop: '4px',
-                zIndex: 10,
-                boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
-              }}>
-                {SHIFT_OPTIONS.map(shift => (
-                  <div
-                    key={shift}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (selectedShifts.includes(shift)) {
-                        setSelectedShifts(selectedShifts.filter(s => s !== shift));
-                      } else {
-                        setSelectedShifts([...selectedShifts, shift]);
-                      }
-                    }}
-                    style={{
-                      padding: '12px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      backgroundColor: selectedShifts.includes(shift) ? '#ffedd5' : 'transparent'
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedShifts.includes(shift)}
-                      onChange={() => {}}
-                      style={{ cursor: 'pointer', width: '16px', height: '16px' }}
-                    />
-                    <span>{shift}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
           {filteredRecords.length > 0 && authService.hasPermission('delete_monitoring_records') && (
             <button
               onClick={handleDeleteAllFiltered}
@@ -683,7 +521,7 @@ const MonitoringRecordsScreen: React.FC = () => {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
                       <div>
                         <h3 style={{ fontSize: '20px', fontWeight: '700', color: '#1a202c', marginBottom: '4px' }}>
-                          {record.line} - Regu {record.regu} - Shift {record.shift}
+                          {record.line}
                         </h3>
                         <p style={{ fontSize: '14px', color: '#718096' }}>
                           {formatDate(record.tanggal)}
@@ -877,7 +715,7 @@ const MonitoringRecordsScreen: React.FC = () => {
         }}>
           <div style={{ background: 'white', borderRadius: '24px', padding: '32px', maxWidth: '500px', width: '100%' }}>
             <h2 style={{ fontSize: '24px', fontWeight: '700', marginBottom: '24px', textAlign: 'center' }}>
-              Pilih Line, Regu, dan Shift
+              Pilih Line dan Tanggal
             </h2>
 
             <div style={{ marginBottom: '20px' }}>
@@ -920,61 +758,7 @@ const MonitoringRecordsScreen: React.FC = () => {
               </select>
             </div>
 
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#4a5568', marginBottom: '8px' }}>
-                Regu
-              </label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-                {REGU_OPTIONS.map(regu => (
-                  <button
-                    key={regu}
-                    onClick={() => setTempRegu(regu)}
-                    style={{
-                      padding: '16px',
-                      borderRadius: '12px',
-                      border: tempRegu === regu ? '2px solid #f97316' : '2px solid #e5e7eb',
-                      background: tempRegu === regu ? '#f97316' : 'white',
-                      color: tempRegu === regu ? 'white' : '#1f2937',
-                      fontSize: '20px',
-                      fontWeight: '700',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                    }}
-                  >
-                    {regu}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ marginBottom: '24px' }}>
-              <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#4a5568', marginBottom: '8px' }}>
-                Shift
-              </label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-                {SHIFT_OPTIONS.map(shift => (
-                  <button
-                    key={shift}
-                    onClick={() => setTempShift(shift)}
-                    style={{
-                      padding: '16px',
-                      borderRadius: '12px',
-                      border: tempShift === shift ? '2px solid #f97316' : '2px solid #e5e7eb',
-                      background: tempShift === shift ? '#f97316' : 'white',
-                      color: tempShift === shift ? 'white' : '#1f2937',
-                      fontSize: '20px',
-                      fontWeight: '700',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                    }}
-                  >
-                    {shift}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '24px' }}>
               <button
                 onClick={() => setShowCreatePopup(false)}
                 style={{
@@ -1071,7 +855,7 @@ const MonitoringRecordsScreen: React.FC = () => {
                   Preview Data Monitoring
                 </h2>
                 <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '24px' }}>
-                  <p><strong>Line:</strong> {previewRecords[0].line} | <strong>Regu:</strong> {previewRecords[0].regu} | <strong>Shift:</strong> {previewRecords[0].shift}</p>
+                  <p><strong>Line:</strong> {previewRecords[0].line}</p>
                   <p><strong>Tanggal:</strong> {new Date(previewRecords[0].tanggal).toLocaleDateString('id-ID')}</p>
                 </div>
 

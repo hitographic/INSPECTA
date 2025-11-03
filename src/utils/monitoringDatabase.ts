@@ -5,8 +5,6 @@ export interface MonitoringRecord {
   plant: string;
   tanggal: string;
   line: string;
-  regu: string;
-  shift: string;
   area: string;
   data_number: number;
   foto_url: string | null;
@@ -31,8 +29,6 @@ export const AREA_OPTIONS = [
   'Packing'
 ];
 
-export const REGU_OPTIONS = ['A', 'B', 'C'];
-export const SHIFT_OPTIONS = ['1', '2', '3'];
 
 export const getMonitoringRecords = async (
   plant: string,
@@ -40,14 +36,12 @@ export const getMonitoringRecords = async (
     startDate?: string;
     endDate?: string;
     lines?: string[];
-    regus?: string[];
-    shifts?: string[];
   }
 ): Promise<MonitoringRecord[]> => {
   try {
     let query = supabase
       .from('monitoring_records')
-      .select('id, plant, tanggal, line, regu, shift, area, data_number, keterangan, status, created_by, created_at, updated_at')
+      .select('id, plant, tanggal, line, area, data_number, keterangan, status, created_by, created_at, updated_at')
       .eq('plant', plant)
       .order('tanggal', { ascending: false })
       .order('data_number', { ascending: true });
@@ -60,12 +54,6 @@ export const getMonitoringRecords = async (
     }
     if (filters?.lines && filters.lines.length > 0) {
       query = query.in('line', filters.lines);
-    }
-    if (filters?.regus && filters.regus.length > 0) {
-      query = query.in('regu', filters.regus);
-    }
-    if (filters?.shifts && filters.shifts.length > 0) {
-      query = query.in('shift', filters.shifts);
     }
 
     const { data, error } = await query;
@@ -84,9 +72,7 @@ export const getMonitoringRecords = async (
 export const getMonitoringRecordsWithPhotos = async (
   plant: string,
   tanggal: string,
-  line: string,
-  regu: string,
-  shift: string
+  line: string
 ): Promise<MonitoringRecord[]> => {
   try {
     const { data, error } = await supabase
@@ -95,8 +81,6 @@ export const getMonitoringRecordsWithPhotos = async (
       .eq('plant', plant)
       .eq('tanggal', tanggal)
       .eq('line', line)
-      .eq('regu', regu)
-      .eq('shift', shift)
       .order('data_number', { ascending: true });
 
     if (error) throw error;
@@ -160,9 +144,7 @@ export const deleteMonitoringRecord = async (id: string): Promise<void> => {
 export const deleteMonitoringSession = async (
   plant: string,
   tanggal: string,
-  line: string,
-  regu: string,
-  shift: string
+  line: string
 ): Promise<void> => {
   try {
     const { error } = await supabase
@@ -170,9 +152,7 @@ export const deleteMonitoringSession = async (
       .delete()
       .eq('plant', plant)
       .eq('tanggal', tanggal)
-      .eq('line', line)
-      .eq('regu', regu)
-      .eq('shift', shift);
+      .eq('line', line);
 
     if (error) throw error;
   } catch (error) {

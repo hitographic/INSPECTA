@@ -9,8 +9,6 @@ interface LocationState {
   plant: string;
   tanggal: string;
   line: string;
-  regu: string;
-  shift: string;
   editMode?: boolean;
 }
 
@@ -35,8 +33,6 @@ const CreateMonitoringScreen: React.FC = () => {
   const [plant] = useState(state?.plant || 'Plant-1');
   const [tanggal] = useState(state?.tanggal || new Date().toISOString().split('T')[0]);
   const [line] = useState(state?.line || 'Line 1');
-  const [regu] = useState(state?.regu || 'A');
-  const [shift] = useState(state?.shift || '1');
 
   const [selectedArea, setSelectedArea] = useState('');
   const [showAreaDropdown, setShowAreaDropdown] = useState(false);
@@ -72,9 +68,7 @@ const CreateMonitoringScreen: React.FC = () => {
       const records = await getMonitoringRecords(plant, {
         startDate: tanggal,
         endDate: tanggal,
-        lines: [line],
-        regus: [regu],
-        shifts: [shift]
+        lines: [line]
       });
 
       const areaMap: { [area: string]: DataEntry[] } = {};
@@ -305,8 +299,6 @@ const CreateMonitoringScreen: React.FC = () => {
             plant,
             tanggal,
             line,
-            regu,
-            shift,
             area: areaData.area,
             data_number: entry.data_number,
             foto_url: entry.foto_url,
@@ -346,8 +338,6 @@ const CreateMonitoringScreen: React.FC = () => {
             plant,
             tanggal,
             line,
-            regu,
-            shift,
             area: areaData.area,
             data_number: entry.data_number,
             foto_url: entry.foto_url,
@@ -428,51 +418,19 @@ const CreateMonitoringScreen: React.FC = () => {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-              <div>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', color: '#2d3748', fontSize: '14px' }}>Line</label>
-                <div style={{
-                  padding: '14px',
-                  background: '#ffedd5',
-                  border: '2px solid #fed7aa',
-                  borderRadius: '12px',
-                  textAlign: 'center',
-                  fontWeight: '600',
-                  fontSize: '16px',
-                  color: '#1a202c'
-                }}>
-                  {line}
-                </div>
-              </div>
-              <div>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', color: '#2d3748', fontSize: '14px' }}>Regu</label>
-                <div style={{
-                  padding: '14px',
-                  background: '#ffedd5',
-                  border: '2px solid #fed7aa',
-                  borderRadius: '12px',
-                  textAlign: 'center',
-                  fontWeight: '600',
-                  fontSize: '16px',
-                  color: '#1a202c'
-                }}>
-                  {regu}
-                </div>
-              </div>
-              <div>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', color: '#2d3748', fontSize: '14px' }}>Shift</label>
-                <div style={{
-                  padding: '14px',
-                  background: '#ffedd5',
-                  border: '2px solid #fed7aa',
-                  borderRadius: '12px',
-                  textAlign: 'center',
-                  fontWeight: '600',
-                  fontSize: '16px',
-                  color: '#1a202c'
-                }}>
-                  {shift}
-                </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', color: '#2d3748', fontSize: '14px' }}>Line</label>
+              <div style={{
+                padding: '14px',
+                background: '#ffedd5',
+                border: '2px solid #fed7aa',
+                borderRadius: '12px',
+                textAlign: 'center',
+                fontWeight: '600',
+                fontSize: '16px',
+                color: '#1a202c'
+              }}>
+                {line}
               </div>
             </div>
 
