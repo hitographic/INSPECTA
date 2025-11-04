@@ -121,10 +121,37 @@ const MonitoringRecordsScreen: React.FC = () => {
     setShowCreatePopup(true);
   };
 
-  const handleCreateConfirm = () => {
+  const handleCreateConfirm = async () => {
     if (!tempTanggal || !tempLine) {
       alert('Harap lengkapi semua field');
       return;
+    }
+
+    // Check if data already exists for this plant, date, and line
+    try {
+      const existingRecords = await getMonitoringRecordsWithPhotos(selectedPlant, tempTanggal, tempLine);
+
+      if (existingRecords && existingRecords.length > 0) {
+        const record = existingRecords[0];
+        const creatorName = await getUserFullName(record.created_by);
+        const statusText = record.status === 'complete' ? 'Complete' : 'Draft';
+
+        alert(
+          `Data untuk Line ${tempLine} pada tanggal ${new Date(tempTanggal).toLocaleDateString('id-ID', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+          })} sudah ada!\n\n` +
+          `Status: ${statusText}\n` +
+          `Dibuat oleh: ${creatorName}\n\n` +
+          `Silakan:\n` +
+          `- Edit data yang sudah ada, atau\n` +
+          `- Pilih tanggal atau line yang berbeda`
+        );
+        return;
+      }
+    } catch (error) {
+      console.error('Error checking existing records:', error);
     }
 
     setShowCreatePopup(false);
