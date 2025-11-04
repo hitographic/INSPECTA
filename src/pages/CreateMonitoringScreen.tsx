@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Camera, Upload, Trash2, Eye, Edit, X, ChevronDown, ChevronUp } from 'lucide-react';
-import { MonitoringRecord, saveMonitoringRecord, getMonitoringRecords, deleteMonitoringRecord, updateMonitoringRecord, AREA_OPTIONS } from '../utils/monitoringDatabase';
+import { MonitoringRecord, saveMonitoringRecord, getMonitoringRecordsWithPhotos, deleteMonitoringRecord, updateMonitoringRecord, AREA_OPTIONS } from '../utils/monitoringDatabase';
 import { CameraManager } from '../utils/camera';
 import { sortAreasByDisplayOrder } from '../utils/masterData';
 
@@ -57,23 +57,16 @@ const CreateMonitoringScreen: React.FC = () => {
 
   const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
 
-  useEffect(() => {
-    if (state?.editMode) {
-      loadExistingData();
-    }
-  }, []);
-
   const loadExistingData = async () => {
     try {
-      const records = await getMonitoringRecords(plant, {
-        startDate: tanggal,
-        endDate: tanggal,
-        lines: [line]
-      });
+      console.log('Loading existing data for:', { plant, tanggal, line });
+      const records = await getMonitoringRecordsWithPhotos(plant, tanggal, line);
+      console.log('Loaded records:', records.length, records);
 
       const areaMap: { [area: string]: DataEntry[] } = {};
 
       records.forEach(record => {
+        console.log('Processing record:', record.id, 'area:', record.area);
         if (!areaMap[record.area]) {
           areaMap[record.area] = [];
         }
@@ -85,8 +78,11 @@ const CreateMonitoringScreen: React.FC = () => {
         });
       });
 
+      console.log('areaMap after processing:', areaMap);
       const areaNames = Object.keys(areaMap);
+      console.log('areaNames before sorting:', areaNames);
       const sortedAreaNames = await sortAreasByDisplayOrder(areaNames);
+      console.log('sortedAreaNames after sorting:', sortedAreaNames);
 
       const areasData: AreaData[] = sortedAreaNames.map(area => {
         // Sort by data_number first
@@ -105,11 +101,20 @@ const CreateMonitoringScreen: React.FC = () => {
         };
       });
 
+      console.log('Setting savedAreas with', areasData.length, 'areas:', areasData);
       setSavedAreas(areasData);
     } catch (error) {
       console.error('Error loading existing data:', error);
     }
   };
+
+  useEffect(() => {
+    console.log('useEffect triggered, state:', state);
+    if (state?.editMode) {
+      console.log('Edit mode detected, loading existing data...');
+      loadExistingData();
+    }
+  }, [state?.editMode]);
 
   const handleGenerate = () => {
     const existingArea = savedAreas.find(a => a.area === selectedArea);

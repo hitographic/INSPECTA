@@ -193,6 +193,12 @@ const MonitoringRecordsScreen: React.FC = () => {
   const handleEdit = (group: MonitoringRecord[]) => {
     if (!group.length) return;
     const record = group[0];
+    console.log('Navigating to edit with:', {
+      plant: record.plant,
+      tanggal: record.tanggal,
+      line: record.line,
+      editMode: true
+    });
     navigate('/create-monitoring', {
       state: {
         plant: record.plant,

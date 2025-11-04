@@ -60,14 +60,25 @@ export const getAreaDisplayOrder = async (areaName: string): Promise<number> => 
 
 export const sortAreasByDisplayOrder = async (areaNames: string[]): Promise<string[]> => {
   try {
+    console.log('sortAreasByDisplayOrder called with:', areaNames);
     const { data, error } = await supabase
       .from('sanitation_areas')
       .select('name, display_order')
       .in('name', areaNames)
       .order('display_order', { ascending: true });
 
+    console.log('Query result - data:', data, 'error:', error);
     if (error) throw error;
-    return data?.map(a => a.name) || areaNames;
+
+    // If no data found in sanitation_areas, return original order
+    if (!data || data.length === 0) {
+      console.log('No areas found in master data, returning original order:', areaNames);
+      return areaNames;
+    }
+
+    const result = data.map(a => a.name);
+    console.log('sortAreasByDisplayOrder returning:', result);
+    return result;
   } catch (error) {
     console.error('Error sorting areas:', error);
     return areaNames;
