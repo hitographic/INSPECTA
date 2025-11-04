@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Camera, Upload, Trash2, Eye, Edit, X, ChevronDown, ChevronUp } from 'lucide-react';
-import { MonitoringRecord, saveMonitoringRecord, getMonitoringRecords, AREA_OPTIONS } from '../utils/monitoringDatabase';
+import { MonitoringRecord, saveMonitoringRecord, getMonitoringRecords, deleteMonitoringRecord, updateMonitoringRecord, AREA_OPTIONS } from '../utils/monitoringDatabase';
 import { CameraManager } from '../utils/camera';
 import { sortAreasByDisplayOrder } from '../utils/masterData';
 
@@ -88,11 +88,22 @@ const CreateMonitoringScreen: React.FC = () => {
       const areaNames = Object.keys(areaMap);
       const sortedAreaNames = await sortAreasByDisplayOrder(areaNames);
 
-      const areasData: AreaData[] = sortedAreaNames.map(area => ({
-        area,
-        entries: areaMap[area].sort((a, b) => a.data_number - b.data_number),
-        expanded: true
-      }));
+      const areasData: AreaData[] = sortedAreaNames.map(area => {
+        // Sort by data_number first
+        const sortedEntries = areaMap[area].sort((a, b) => a.data_number - b.data_number);
+
+        // Re-number to ensure sequential numbering (1, 2, 3, 4...)
+        const renumberedEntries = sortedEntries.map((entry, index) => ({
+          ...entry,
+          data_number: index + 1
+        }));
+
+        return {
+          area,
+          entries: renumberedEntries,
+          expanded: true
+        };
+      });
 
       setSavedAreas(areasData);
     } catch (error) {
@@ -155,9 +166,11 @@ const CreateMonitoringScreen: React.FC = () => {
       }
     }
 
-    setCurrentDataNumber(prev => prev + 1);
+    // Reset form tanpa increment currentDataNumber
+    // currentDataNumber akan di-set ulang saat handleGenerate dipanggil
     setCurrentFoto(null);
     setCurrentKeterangan('');
+    setShowDataForm(false);
     alert('Data berhasil ditambahkan!');
   };
 
@@ -171,17 +184,32 @@ const CreateMonitoringScreen: React.FC = () => {
     setShowDataForm(true);
   };
 
-  const handleDeleteEntry = (areaIndex: number, entryIndex: number) => {
-    if (confirm('Hapus data ini?')) {
-      const updatedAreas = [...savedAreas];
-      updatedAreas[areaIndex].entries.splice(entryIndex, 1);
+  const handleDeleteEntry = async (areaIndex: number, entryIndex: number) => {
+    if (!confirm('Hapus data ini?')) return;
 
-      if (updatedAreas[areaIndex].entries.length === 0) {
-        updatedAreas.splice(areaIndex, 1);
+    const entry = savedAreas[areaIndex].entries[entryIndex];
+
+    // If entry has id, delete from database
+    if (entry.id) {
+      try {
+        await deleteMonitoringRecord(entry.id);
+      } catch (error) {
+        console.error('Error deleting from database:', error);
+        alert('Gagal menghapus data dari database');
+        return;
       }
-
-      setSavedAreas(updatedAreas);
     }
+
+    // Remove from local state
+    const updatedAreas = [...savedAreas];
+    updatedAreas[areaIndex].entries.splice(entryIndex, 1);
+
+    if (updatedAreas[areaIndex].entries.length === 0) {
+      updatedAreas.splice(areaIndex, 1);
+    }
+
+    setSavedAreas(updatedAreas);
+    alert('Data berhasil dihapus!');
   };
 
   const handleToggleArea = (areaIndex: number) => {
@@ -291,10 +319,6 @@ const CreateMonitoringScreen: React.FC = () => {
     try {
       for (const areaData of savedAreas) {
         for (const entry of areaData.entries) {
-          if (entry.id) {
-            continue;
-          }
-
           const record: Partial<MonitoringRecord> = {
             plant,
             tanggal,
@@ -307,7 +331,13 @@ const CreateMonitoringScreen: React.FC = () => {
             created_by: currentUser.name || currentUser.username
           };
 
-          await saveMonitoringRecord(record);
+          if (entry.id) {
+            // Update existing record (including updated data_number)
+            await updateMonitoringRecord(entry.id, record);
+          } else {
+            // Create new record
+            await saveMonitoringRecord(record);
+          }
         }
       }
 
@@ -330,10 +360,6 @@ const CreateMonitoringScreen: React.FC = () => {
     try {
       for (const areaData of savedAreas) {
         for (const entry of areaData.entries) {
-          if (entry.id) {
-            continue;
-          }
-
           const record: Partial<MonitoringRecord> = {
             plant,
             tanggal,
@@ -346,7 +372,13 @@ const CreateMonitoringScreen: React.FC = () => {
             created_by: currentUser.name || currentUser.username
           };
 
-          await saveMonitoringRecord(record);
+          if (entry.id) {
+            // Update existing record (including updated data_number)
+            await updateMonitoringRecord(entry.id, record);
+          } else {
+            // Create new record
+            await saveMonitoringRecord(record);
+          }
         }
       }
 

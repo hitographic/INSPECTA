@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Plus, FileDown, Trash2, Eye, X } from 'lucide-react';
 import { MonitoringRecord, getMonitoringRecords, getMonitoringRecordsWithPhotos, deleteMonitoringSession, deleteMultipleMonitoringRecords } from '../utils/monitoringDatabase';
 import { authService } from '../utils/authService';
-import { exportMonitoringToExcel, exportMonitoringToPDF, exportAllMonitoringToExcel } from '../utils/monitoringExport';
+import { exportMonitoringToExcel, exportMonitoringToPDF, exportAllMonitoringToExcel, getUserFullName } from '../utils/monitoringExport';
 import { PLANTS } from '../constants/AppConstants';
 
 interface LocationState {
@@ -35,6 +35,9 @@ const MonitoringRecordsScreen: React.FC = () => {
   const [previewRecords, setPreviewRecords] = useState<MonitoringRecord[]>([]);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
+  // State to store resolved creator names (NIK -> Full Name)
+  const [creatorNames, setCreatorNames] = useState<{ [key: string]: string }>({});
+
   const lines = PLANTS[selectedPlant as keyof typeof PLANTS]?.map(num => `Line ${num}`) || [];
 
   useEffect(() => {
@@ -45,6 +48,25 @@ const MonitoringRecordsScreen: React.FC = () => {
     applyFilters();
     setCurrentPage(1);
   }, [records, startDate, endDate, selectedLines]);
+
+  // Resolve creator names when records change
+  useEffect(() => {
+    const resolveCreatorNames = async () => {
+      const uniqueCreators = [...new Set(records.map(r => r.created_by).filter(Boolean))];
+      const names: { [key: string]: string } = {};
+
+      for (const creator of uniqueCreators) {
+        const fullName = await getUserFullName(creator);
+        names[creator] = fullName;
+      }
+
+      setCreatorNames(names);
+    };
+
+    if (records.length > 0) {
+      resolveCreatorNames();
+    }
+  }, [records]);
 
   const loadRecords = async () => {
     setLoading(true);
@@ -548,7 +570,7 @@ const MonitoringRecordsScreen: React.FC = () => {
                     </div>
 
                     <p style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '16px' }}>
-                      Dibuat oleh: {record.created_by}
+                      Dibuat oleh: {creatorNames[record.created_by] || record.created_by}
                     </p>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px' }}>

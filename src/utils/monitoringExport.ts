@@ -3,6 +3,40 @@ import jsPDF from 'jspdf';
 import { MonitoringRecord } from './monitoringDatabase';
 import { cropImageToSquare, cropImageToSquareForExcel } from './imageUtils';
 import { sortAreasByDisplayOrder } from './masterData';
+import { supabase } from './supabase';
+
+// Helper function to get user's full name from username (NIK)
+// Export this function so it can be used in other components
+export const getUserFullName = async (createdBy: string): Promise<string> => {
+  // If createdBy is already a name (contains space or non-numeric chars other than space), return as is
+  if (/[a-zA-Z]/.test(createdBy) && createdBy.includes(' ')) {
+    return createdBy;
+  }
+
+  // If it's purely numeric (NIK), lookup from database
+  if (/^\d+$/.test(createdBy)) {
+    try {
+      const { data, error } = await supabase
+        .from('app_users')
+        .select('full_name')
+        .eq('username', createdBy)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching user name:', error);
+        return createdBy;
+      }
+
+      if (data && data.full_name) {
+        return data.full_name;
+      }
+    } catch (error) {
+      console.error('Error fetching user name:', error);
+    }
+  }
+
+  return createdBy;
+};
 
 export const exportMonitoringToExcel = async (
   records: MonitoringRecord[],
@@ -21,7 +55,7 @@ export const exportMonitoringToExcel = async (
     const tanggalInput = records[0]?.tanggal
       ? new Date(records[0].tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
       : '';
-    const createdBy = records[0]?.created_by || '';
+    const createdBy = await getUserFullName(records[0]?.created_by || '');
 
     let currentRow = 1;
 
@@ -92,8 +126,10 @@ export const exportMonitoringToExcel = async (
 
       areaRecords.sort((a, b) => a.data_number - b.data_number);
 
-      for (const record of areaRecords) {
-        worksheet.getCell(`A${currentRow}`).value = record.data_number;
+      for (let i = 0; i < areaRecords.length; i++) {
+        const record = areaRecords[i];
+        // Use index + 1 for sequential numbering instead of record.data_number
+        worksheet.getCell(`A${currentRow}`).value = i + 1;
         worksheet.getCell(`A${currentRow}`).alignment = { horizontal: 'center', vertical: 'middle' };
 
         if (record.foto_url) {
@@ -198,7 +234,7 @@ export const exportMonitoringToPDF = async (
     const tanggalInput = records[0]?.tanggal
       ? new Date(records[0].tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
       : '';
-    const createdBy = records[0]?.created_by || '';
+    const createdBy = await getUserFullName(records[0]?.created_by || '');
 
     const addHeader = () => {
       yPosition = margin;
@@ -283,7 +319,8 @@ export const exportMonitoringToPDF = async (
 
       areaRecords.sort((a, b) => a.data_number - b.data_number);
 
-      for (const record of areaRecords) {
+      for (let i = 0; i < areaRecords.length; i++) {
+        const record = areaRecords[i];
         const imageHeight = record.foto_url ? 45 : 20;
         let keteranganHeight = 20;
 
@@ -330,7 +367,8 @@ export const exportMonitoringToPDF = async (
 
         pdf.setFontSize(10);
         pdf.setFont('helvetica', 'normal');
-        pdf.text(record.data_number.toString(), tableStartX + colWidths.no / 2, yPosition + rowHeight / 2, { align: 'center', baseline: 'middle' });
+        // Use index + 1 for sequential numbering instead of record.data_number
+        pdf.text((i + 1).toString(), tableStartX + colWidths.no / 2, yPosition + rowHeight / 2, { align: 'center', baseline: 'middle' });
 
         if (record.foto_url) {
           try {
