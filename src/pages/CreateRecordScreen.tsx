@@ -145,14 +145,21 @@ export default function CreateRecordScreen() {
   // Load dynamic master data from database
   useEffect(() => {
     const loadDynamicData = async () => {
-      if (!line) return;
+      if (!line) {
+        console.log('[DYNAMIC_DATA] No line selected yet');
+        return;
+      }
 
       try {
+        console.log('[DYNAMIC_DATA] Loading data for line:', line);
         const bagianByArea = await getBagianForLine(line);
+        console.log('[DYNAMIC_DATA] Bagian by area fetched:', bagianByArea);
 
         if (Object.keys(bagianByArea).length > 0) {
+          const areas = Object.keys(bagianByArea);
+          console.log('[DYNAMIC_DATA] Setting dynamic data - Areas:', areas);
           setUseDynamicData(true);
-          setDynamicAreas(Object.keys(bagianByArea));
+          setDynamicAreas(areas);
           setDynamicBagianByArea(bagianByArea);
 
           const keteranganMap: {[key: string]: string} = {};
@@ -160,11 +167,13 @@ export default function CreateRecordScreen() {
             keteranganMap[bagian.name] = bagian.keterangan;
           });
           setDynamicKeterangan(keteranganMap);
+          console.log('[DYNAMIC_DATA] Dynamic data loaded successfully. Use dynamic: true');
         } else {
+          console.log('[DYNAMIC_DATA] No bagian found for line:', line);
           setUseDynamicData(false);
         }
       } catch (error) {
-        console.error('Error loading dynamic data:', error);
+        console.error('[DYNAMIC_DATA] Error loading dynamic data:', error);
         setUseDynamicData(false);
       }
     };
@@ -230,8 +239,16 @@ export default function CreateRecordScreen() {
     }
   };
 
-  const getActiveAreas = () => useDynamicData ? dynamicAreas : AREAS;
-  const getActiveBagianByArea = () => useDynamicData ? dynamicBagianByArea : BAGIAN_BY_AREA;
+  const getActiveAreas = () => {
+    const result = useDynamicData ? dynamicAreas : AREAS;
+    console.log('[GET_ACTIVE] getActiveAreas - useDynamic:', useDynamicData, 'result:', result);
+    return result;
+  };
+  const getActiveBagianByArea = () => {
+    const result = useDynamicData ? dynamicBagianByArea : BAGIAN_BY_AREA;
+    console.log('[GET_ACTIVE] getActiveBagianByArea - useDynamic:', useDynamicData, 'keys:', Object.keys(result));
+    return result;
+  };
   const getActiveKeterangan = () => useDynamicData ? dynamicKeterangan : KETERANGAN_TEMPLATES;
 
   const getTotalBagianCount = () => {
