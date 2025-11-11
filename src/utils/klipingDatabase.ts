@@ -77,6 +77,8 @@ export const countKlipingPhotos = async (filters?: {
   shift?: string;
 }): Promise<{ [key: string]: number }> => {
   try {
+    console.log('[KLIPING] countKlipingPhotos called with filters:', filters);
+
     const { data, error } = await supabase.rpc('count_kliping_photos', {
       p_plant: filters?.plant || null
     });
@@ -86,11 +88,18 @@ export const countKlipingPhotos = async (filters?: {
       return {};
     }
 
+    console.log('[KLIPING] RPC returned data:', data);
+    console.log('[KLIPING] Data length:', data?.length);
+
     const counts: { [key: string]: number } = {};
     data?.forEach((row: any) => {
       const key = `${row.tanggal}_${row.line}_${row.regu}_${row.shift}_${row.pengamatan_ke}_${row.mesin}`;
       counts[key] = row.photo_count;
+      console.log('[KLIPING] Photo count key:', key, '=', row.photo_count);
     });
+
+    console.log('[KLIPING] Final counts object:', counts);
+    console.log('[KLIPING] Total keys in counts:', Object.keys(counts).length);
 
     return counts;
   } catch (error) {
