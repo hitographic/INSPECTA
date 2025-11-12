@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { logDelete } from './auditLog';
 import { KlipingRecord } from '../types/database';
 import { requestQueue } from './requestQueue';
 
@@ -93,6 +94,7 @@ export const countKlipingPhotos = async (filters?: {
 
     const counts: { [key: string]: number } = {};
     data?.forEach((row: any) => {
+      console.log('[KLIPING] Raw row.tanggal type:', typeof row.tanggal, 'value:', row.tanggal);
       const key = `${row.tanggal}_${row.line}_${row.regu}_${row.shift}_${row.pengamatan_ke}_${row.mesin}`;
       counts[key] = row.photo_count;
       console.log('[KLIPING] Photo count key:', key, '=', row.photo_count);
@@ -315,6 +317,40 @@ export const getKlipingRecordsWithPhotos = async (filters?: {
 
 export const deleteKlipingRecord = async (id: string): Promise<{ success: boolean; error?: string }> => {
   try {
+    const { data: record } = await supabase
+      .from('kliping_records')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (record) {
+      const currentUserStr = localStorage.getItem('currentUser');
+      let deletedBy = 'anonymous';
+      if (currentUserStr) {
+        try {
+          const currentUser = JSON.parse(currentUserStr);
+          deletedBy = currentUser.full_name || currentUser.username || 'anonymous';
+        } catch (e) {
+          console.error('Failed to parse currentUser:', e);
+        }
+      }
+
+      await logDelete({
+        table_name: 'kliping_records',
+        record_id: id,
+        record_data: record,
+        deleted_by: deletedBy,
+        plant: record.plant,
+        additional_info: {
+          line: record.line,
+          tanggal: record.tanggal,
+          regu: record.regu,
+          shift: record.shift,
+          id_unik: record.id_unik
+        }
+      });
+    }
+
     const { error } = await supabase
       .from('kliping_records')
       .delete()
@@ -334,6 +370,41 @@ export const deleteKlipingRecord = async (id: string): Promise<{ success: boolea
 
 export const deleteKlipingRecordsByIdUnik = async (idUnik: string): Promise<{ success: boolean; error?: string }> => {
   try {
+    const { data: records } = await supabase
+      .from('kliping_records')
+      .select('*')
+      .eq('id_unik', idUnik);
+
+    if (records && records.length > 0) {
+      const currentUserStr = localStorage.getItem('currentUser');
+      let deletedBy = 'anonymous';
+      if (currentUserStr) {
+        try {
+          const currentUser = JSON.parse(currentUserStr);
+          deletedBy = currentUser.full_name || currentUser.username || 'anonymous';
+        } catch (e) {
+          console.error('Failed to parse currentUser:', e);
+        }
+      }
+
+      const firstRecord = records[0];
+      await logDelete({
+        table_name: 'kliping_records',
+        record_id: idUnik,
+        record_data: records,
+        deleted_by: deletedBy,
+        action: 'BULK_DELETE',
+        plant: firstRecord.plant,
+        additional_info: {
+          line: firstRecord.line,
+          tanggal: firstRecord.tanggal,
+          regu: firstRecord.regu,
+          shift: firstRecord.shift,
+          count: records.length
+        }
+      });
+    }
+
     const { error } = await supabase
       .from('kliping_records')
       .delete()

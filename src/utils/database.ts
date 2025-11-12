@@ -1,6 +1,7 @@
 import { SanitationRecord } from '../types/database';
 import { supabase } from '../utils/supabase';
 import { requestQueue } from './requestQueue';
+import { logDelete } from './auditLog';
 
 // Add debug logging
 const DEBUG = true;
@@ -455,7 +456,37 @@ class DatabaseManager {
   async deleteRecord(id: number): Promise<void> {
     try {
       console.log('Attempting to delete record:', id);
-      
+
+      const record = await this.getRecordById(id);
+      if (!record) {
+        throw new Error('Record not found');
+      }
+
+      const currentUserStr = localStorage.getItem('currentUser');
+      let deletedBy = 'anonymous';
+      if (currentUserStr) {
+        try {
+          const currentUser = JSON.parse(currentUserStr);
+          deletedBy = currentUser.full_name || currentUser.username || 'anonymous';
+        } catch (e) {
+          console.error('Failed to parse currentUser:', e);
+        }
+      }
+
+      await logDelete({
+        table_name: 'sanitation_records',
+        record_id: id.toString(),
+        record_data: record,
+        deleted_by: deletedBy,
+        plant: record.plant,
+        additional_info: {
+          line: record.line,
+          area: record.area,
+          bagian: record.bagian,
+          tanggal: record.tanggal
+        }
+      });
+
       const { error } = await supabase
         .from('sanitation_records')
         .delete()
@@ -465,7 +496,7 @@ class DatabaseManager {
         console.error('Delete error:', error);
         throw error;
       }
-      
+
       console.log('Record deleted successfully');
     } catch (error) {
       console.error('Failed to delete record:', error);

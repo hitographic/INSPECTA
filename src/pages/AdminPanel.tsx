@@ -433,6 +433,24 @@ export default function AdminPanel() {
           </button>
           <button
             className="button"
+            onClick={() => navigate('/master-data')}
+            style={{ background: '#8B5CF6', color: 'white', fontSize: '0.875rem', padding: '0.625rem 1rem', flex: '1 1 auto', minWidth: '100px' }}
+          >
+            <Edit2 size={18} />
+            <span className="mobile-hide">Master Data</span>
+            <span className="mobile-show" style={{ display: 'none' }}>Master</span>
+          </button>
+          <button
+            className="button"
+            onClick={() => navigate('/audit-log')}
+            style={{ background: '#EF4444', color: 'white', fontSize: '0.875rem', padding: '0.625rem 1rem', flex: '1 1 auto', minWidth: '100px' }}
+          >
+            <Trash2 size={18} />
+            <span className="mobile-hide">Audit Log</span>
+            <span className="mobile-show" style={{ display: 'none' }}>Audit</span>
+          </button>
+          <button
+            className="button"
             onClick={() => setShowCSVUpload(true)}
             style={{ background: '#10B981', color: 'white', fontSize: '0.875rem', padding: '0.625rem 1rem', flex: '1 1 auto', minWidth: '100px' }}
           >

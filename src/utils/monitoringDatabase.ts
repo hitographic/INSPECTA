@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { logDelete } from './auditLog';
 
 export interface MonitoringRecord {
   id: string;
@@ -129,6 +130,37 @@ export const updateMonitoringRecord = async (
 
 export const deleteMonitoringRecord = async (id: string): Promise<void> => {
   try {
+    const { data: record } = await supabase
+      .from('monitoring_records')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (record) {
+      const currentUserStr = localStorage.getItem('currentUser');
+      let deletedBy = 'anonymous';
+      if (currentUserStr) {
+        try {
+          const currentUser = JSON.parse(currentUserStr);
+          deletedBy = currentUser.full_name || currentUser.username || 'anonymous';
+        } catch (e) {
+          console.error('Failed to parse currentUser:', e);
+        }
+      }
+
+      await logDelete({
+        table_name: 'monitoring_records',
+        record_id: id,
+        record_data: record,
+        deleted_by: deletedBy,
+        plant: record.plant,
+        additional_info: {
+          line: record.line,
+          tanggal: record.tanggal
+        }
+      });
+    }
+
     const { error } = await supabase
       .from('monitoring_records')
       .delete()
@@ -147,6 +179,40 @@ export const deleteMonitoringSession = async (
   line: string
 ): Promise<void> => {
   try {
+    const { data: records } = await supabase
+      .from('monitoring_records')
+      .select('*')
+      .eq('plant', plant)
+      .eq('tanggal', tanggal)
+      .eq('line', line);
+
+    if (records && records.length > 0) {
+      const currentUserStr = localStorage.getItem('currentUser');
+      let deletedBy = 'anonymous';
+      if (currentUserStr) {
+        try {
+          const currentUser = JSON.parse(currentUserStr);
+          deletedBy = currentUser.full_name || currentUser.username || 'anonymous';
+        } catch (e) {
+          console.error('Failed to parse currentUser:', e);
+        }
+      }
+
+      await logDelete({
+        table_name: 'monitoring_records',
+        record_id: `${plant}_${tanggal}_${line}`,
+        record_data: records,
+        deleted_by: deletedBy,
+        action: 'BULK_DELETE_SESSION',
+        plant: plant,
+        additional_info: {
+          line: line,
+          tanggal: tanggal,
+          count: records.length
+        }
+      });
+    }
+
     const { error } = await supabase
       .from('monitoring_records')
       .delete()
@@ -165,6 +231,37 @@ export const deleteMultipleMonitoringRecords = async (
   recordIds: string[]
 ): Promise<void> => {
   try {
+    const { data: records } = await supabase
+      .from('monitoring_records')
+      .select('*')
+      .in('id', recordIds);
+
+    if (records && records.length > 0) {
+      const currentUserStr = localStorage.getItem('currentUser');
+      let deletedBy = 'anonymous';
+      if (currentUserStr) {
+        try {
+          const currentUser = JSON.parse(currentUserStr);
+          deletedBy = currentUser.full_name || currentUser.username || 'anonymous';
+        } catch (e) {
+          console.error('Failed to parse currentUser:', e);
+        }
+      }
+
+      await logDelete({
+        table_name: 'monitoring_records',
+        record_id: recordIds.join(','),
+        record_data: records,
+        deleted_by: deletedBy,
+        action: 'BULK_DELETE_MULTIPLE',
+        plant: records[0]?.plant,
+        additional_info: {
+          count: records.length,
+          ids: recordIds
+        }
+      });
+    }
+
     const { error } = await supabase
       .from('monitoring_records')
       .delete()

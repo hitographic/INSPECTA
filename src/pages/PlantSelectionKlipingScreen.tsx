@@ -15,11 +15,13 @@ const PlantSelectionKlipingScreen: React.FC = () => {
     }
 
     const allowedPlants = authService.getAllowedPlants();
+    console.log('[PLANT SELECTION] Allowed plants from authService:', allowedPlants);
     // Ensure we always set an array
     setPlants(Array.isArray(allowedPlants) ? allowedPlants : []);
   }, [navigate]);
 
   const handlePlantSelect = (plant: string) => {
+    console.log('[PLANT SELECTION] Selected plant:', plant);
     navigate('/kliping-records', { state: { plant } });
   };
 

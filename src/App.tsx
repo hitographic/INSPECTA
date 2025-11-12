@@ -13,6 +13,7 @@ import CreateKlipingScreen from './pages/CreateKlipingScreen'
 import PlantSelectionMonitoringScreen from './pages/PlantSelectionMonitoringScreen'
 import MonitoringRecordsScreen from './pages/MonitoringRecordsScreen'
 import CreateMonitoringScreen from './pages/CreateMonitoringScreen'
+import AuditLogScreen from './pages/AuditLogScreen'
 import './App.css'
 
 
@@ -36,6 +37,7 @@ function App() {
             <Route path="/create-monitoring" element={<CreateMonitoringScreen />} />
             <Route path="/admin" element={<AdminPanel />} />
             <Route path="/master-data" element={<MasterDataManagement />} />
+            <Route path="/audit-log" element={<AuditLogScreen />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

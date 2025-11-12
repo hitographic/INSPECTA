@@ -113,13 +113,21 @@ const KlipingRecordsScreen: React.FC = () => {
         countKlipingPhotos({ plant })
       ]);
 
+      console.log('[KLIPING SCREEN] ========================================');
       console.log('[KLIPING SCREEN] Received data:', data);
       console.log('[KLIPING SCREEN] Data length:', data?.length);
       console.log('[KLIPING SCREEN] Sample record:', data?.[0]);
-      console.log('[KLIPING SCREEN] Photo counts:', counts);
+      console.log('[KLIPING SCREEN] ========================================');
+      console.log('[KLIPING SCREEN] Photo counts object:', counts);
+      console.log('[KLIPING SCREEN] Photo counts type:', typeof counts);
+      console.log('[KLIPING SCREEN] Photo counts is null?', counts === null);
+      console.log('[KLIPING SCREEN] Photo counts is undefined?', counts === undefined);
+      console.log('[KLIPING SCREEN] Sample photo count keys:', Object.keys(counts || {}).slice(0, 10));
+      console.log('[KLIPING SCREEN] Total photo count keys:', Object.keys(counts || {}).length);
+      console.log('[KLIPING SCREEN] ========================================');
 
       setRecords(data);
-      setPhotoCounts(counts);
+      setPhotoCounts(counts || {});
 
       setLoading(false);
 
@@ -1024,6 +1032,10 @@ const KlipingRecordsScreen: React.FC = () => {
                                     {data.mesins.sort((a, b) => parseInt(a) - parseInt(b)).map(mesinNum => {
                                       const photoKey = `${firstRecord.tanggal}_${firstRecord.line}_${firstRecord.regu}_${firstRecord.shift}_${pengNum}_Mesin ${mesinNum}`;
                                       const photoCount = photoCounts[photoKey] || 0;
+                                      console.log('[DISPLAY] Looking for key:', photoKey, 'Found count:', photoCount);
+                                      console.log('[DISPLAY] firstRecord.tanggal type:', typeof firstRecord.tanggal, 'value:', firstRecord.tanggal);
+                                      console.log('[DISPLAY] photoCounts state:', photoCounts);
+                                      console.log('[DISPLAY] photoCounts keys count:', Object.keys(photoCounts).length);
                                       const totalPhotos = 8;
 
                                       return (
