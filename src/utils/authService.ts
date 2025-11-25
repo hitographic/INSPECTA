@@ -70,18 +70,28 @@ const DEFAULT_USERS = [
 
 class AuthService {
   private currentUser: AppUser | null = null;
+  private initialized: boolean = false;
 
   async initializeDefaultUsers() {
+    if (this.initialized) {
+      return;
+    }
+    this.initialized = true;
     try {
       for (const user of DEFAULT_USERS) {
-        const { data: existing } = await supabase
+        const { data: existing, error: selectError } = await supabase
           .from('app_users')
           .select('id')
           .eq('username', user.username)
           .maybeSingle();
 
+        if (selectError) {
+          console.error(`Error checking user ${user.username}:`, selectError);
+          continue;
+        }
+
         if (!existing) {
-          const { data: newUser } = await supabase
+          const { data: newUser, error: insertError } = await supabase
             .from('app_users')
             .insert({
               username: user.username,
@@ -96,14 +106,27 @@ class AuthService {
             .select()
             .maybeSingle();
 
+          if (insertError) {
+            if (insertError.code === '23505') {
+              console.log(`User ${user.username} already exists (caught unique constraint violation)`);
+              continue;
+            }
+            console.error(`Error creating user ${user.username}:`, insertError);
+            continue;
+          }
+
           if (newUser) {
             for (const permission of user.permissions) {
-              await supabase
+              const { error: permError } = await supabase
                 .from('user_permissions')
                 .insert({
                   user_id: newUser.id,
                   permission
                 });
+
+              if (permError && permError.code !== '23505') {
+                console.error(`Error adding permission ${permission}:`, permError);
+              }
             }
           }
         }
