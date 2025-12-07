@@ -3,7 +3,7 @@ import { supabase } from './supabase';
 export interface AuditLogEntry {
   table_name: string;
   record_id: string;
-  record_data: any;
+  affected_count: number;
   deleted_by: string;
   action?: string;
   plant?: string;
@@ -17,7 +17,7 @@ export const logDelete = async (entry: AuditLogEntry): Promise<void> => {
       .insert({
         table_name: entry.table_name,
         record_id: entry.record_id,
-        record_data: entry.record_data,
+        affected_count: entry.affected_count,
         deleted_by: entry.deleted_by,
         action: entry.action || 'DELETE',
         plant: entry.plant,
@@ -47,6 +47,8 @@ export const getAuditLogs = async (filters?: {
   limit?: number;
 }) => {
   try {
+    console.log('[AUDIT LOG] Fetching audit logs with filters:', filters);
+
     let query = supabase
       .from('audit_logs')
       .select('*')
@@ -76,13 +78,22 @@ export const getAuditLogs = async (filters?: {
       query = query.limit(filters.limit);
     }
 
+    console.log('[AUDIT LOG] Executing query...');
     const { data, error } = await query;
 
     if (error) {
       console.error('[AUDIT LOG] Failed to fetch audit logs:', error);
+      console.error('[AUDIT LOG] Error details:', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint
+      });
       throw error;
     }
 
+    console.log('[AUDIT LOG] Successfully fetched audit logs:', data?.length || 0, 'records');
+    console.log('[AUDIT LOG] First record:', data?.[0]);
     return data || [];
   } catch (error) {
     console.error('[AUDIT LOG] Error fetching audit logs:', error);

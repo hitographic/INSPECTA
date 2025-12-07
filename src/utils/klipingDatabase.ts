@@ -338,7 +338,7 @@ export const deleteKlipingRecord = async (id: string): Promise<{ success: boolea
       await logDelete({
         table_name: 'kliping_records',
         record_id: id,
-        record_data: record,
+        affected_count: 1,
         deleted_by: deletedBy,
         plant: record.plant,
         additional_info: {
@@ -391,7 +391,7 @@ export const deleteKlipingRecordsByIdUnik = async (idUnik: string): Promise<{ su
       await logDelete({
         table_name: 'kliping_records',
         record_id: idUnik,
-        record_data: records,
+        affected_count: records.length,
         deleted_by: deletedBy,
         action: 'BULK_DELETE',
         plant: firstRecord.plant,
@@ -399,8 +399,7 @@ export const deleteKlipingRecordsByIdUnik = async (idUnik: string): Promise<{ su
           line: firstRecord.line,
           tanggal: firstRecord.tanggal,
           regu: firstRecord.regu,
-          shift: firstRecord.shift,
-          count: records.length
+          shift: firstRecord.shift
         }
       });
     }

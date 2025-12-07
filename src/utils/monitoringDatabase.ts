@@ -151,7 +151,7 @@ export const deleteMonitoringRecord = async (id: string): Promise<void> => {
       await logDelete({
         table_name: 'monitoring_records',
         record_id: id,
-        record_data: record,
+        affected_count: 1,
         deleted_by: deletedBy,
         plant: record.plant,
         additional_info: {
@@ -201,14 +201,13 @@ export const deleteMonitoringSession = async (
       await logDelete({
         table_name: 'monitoring_records',
         record_id: `${plant}_${tanggal}_${line}`,
-        record_data: records,
+        affected_count: records.length,
         deleted_by: deletedBy,
         action: 'BULK_DELETE_SESSION',
         plant: plant,
         additional_info: {
           line: line,
-          tanggal: tanggal,
-          count: records.length
+          tanggal: tanggal
         }
       });
     }
@@ -251,12 +250,11 @@ export const deleteMultipleMonitoringRecords = async (
       await logDelete({
         table_name: 'monitoring_records',
         record_id: recordIds.join(','),
-        record_data: records,
+        affected_count: records.length,
         deleted_by: deletedBy,
         action: 'BULK_DELETE_MULTIPLE',
         plant: records[0]?.plant,
         additional_info: {
-          count: records.length,
           ids: recordIds
         }
       });

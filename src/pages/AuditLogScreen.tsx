@@ -9,7 +9,7 @@ interface AuditLog {
   id: string;
   table_name: string;
   record_id: string;
-  record_data: any;
+  affected_count: number;
   deleted_by: string;
   deleted_at: string;
   action: string;
@@ -56,11 +56,14 @@ const AuditLogScreen: React.FC = () => {
 
   const loadAuditLogs = async () => {
     try {
+      console.log('[AUDIT LOG SCREEN] Loading audit logs...');
       setLoading(true);
       const data = await getAuditLogs({ limit: 1000 });
+      console.log('[AUDIT LOG SCREEN] Received data:', data?.length || 0, 'records');
+      console.log('[AUDIT LOG SCREEN] First log:', data?.[0]);
       setLogs(data);
     } catch (error) {
-      console.error('Failed to load audit logs:', error);
+      console.error('[AUDIT LOG SCREEN] Failed to load audit logs:', error);
       alert('Gagal memuat audit logs');
     } finally {
       setLoading(false);
@@ -118,6 +121,7 @@ const AuditLogScreen: React.FC = () => {
         { header: 'Tanggal & Waktu', key: 'deleted_at', width: 20 },
         { header: 'Tabel', key: 'table_name', width: 20 },
         { header: 'Action', key: 'action', width: 15 },
+        { header: 'Jumlah Data', key: 'affected_count', width: 12 },
         { header: 'Dihapus Oleh', key: 'deleted_by', width: 25 },
         { header: 'Plant', key: 'plant', width: 12 },
         { header: 'Record ID', key: 'record_id', width: 30 },
@@ -136,6 +140,7 @@ const AuditLogScreen: React.FC = () => {
           deleted_at: new Date(log.deleted_at).toLocaleString('id-ID'),
           table_name: log.table_name,
           action: log.action,
+          affected_count: log.affected_count,
           deleted_by: log.deleted_by,
           plant: log.plant || '-',
           record_id: log.record_id,
@@ -466,7 +471,7 @@ const AuditLogScreen: React.FC = () => {
                     <td style={{ padding: '12px', fontSize: '14px', color: '#718096' }}>
                       {log.additional_info?.line && `Line ${log.additional_info.line}`}
                       {log.additional_info?.tanggal && ` | ${log.additional_info.tanggal}`}
-                      {log.additional_info?.count && ` (${log.additional_info.count} records)`}
+                      {log.affected_count > 1 && ` (${log.affected_count} records)`}
                     </td>
                     <td style={{ padding: '12px', textAlign: 'center' }}>
                       <button
@@ -581,20 +586,19 @@ const AuditLogScreen: React.FC = () => {
 
             <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '24px' }}>
               <div style={{ fontSize: '14px', fontWeight: '600', color: '#4a5568', marginBottom: '12px' }}>
-                Data Record yang Dihapus:
+                Jumlah Data yang Terpengaruh:
               </div>
-              <pre style={{
+              <div style={{
                 background: '#f7fafc',
                 padding: '16px',
                 borderRadius: '12px',
-                fontSize: '12px',
-                overflow: 'auto',
-                maxHeight: '300px',
-                color: '#2d3748',
-                fontFamily: 'monospace'
+                fontSize: '24px',
+                fontWeight: '700',
+                color: '#10b981',
+                textAlign: 'center'
               }}>
-                {JSON.stringify(selectedLog.record_data, null, 2)}
-              </pre>
+                {selectedLog.affected_count} {selectedLog.affected_count === 1 ? 'record' : 'records'}
+              </div>
             </div>
           </div>
         </div>

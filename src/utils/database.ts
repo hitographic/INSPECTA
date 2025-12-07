@@ -476,7 +476,7 @@ class DatabaseManager {
       await logDelete({
         table_name: 'sanitation_records',
         record_id: id.toString(),
-        record_data: record,
+        affected_count: 1,
         deleted_by: deletedBy,
         plant: record.plant,
         additional_info: {
