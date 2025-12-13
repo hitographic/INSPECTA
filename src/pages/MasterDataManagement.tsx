@@ -1119,8 +1119,8 @@ export default function MasterDataManagement() {
                     <td style={{ padding: '1rem' }}>{bagian.area_name}</td>
                     <td style={{ padding: '1rem' }}>{bagian.name}</td>
                     <td style={{ padding: '1rem', fontSize: '0.875rem', color: '#4B5563' }}>
-                      {bagian.keterangan.substring(0, 100)}
-                      {bagian.keterangan.length > 100 && '...'}
+                      {bagian.keterangan ? bagian.keterangan.substring(0, 100) : '-'}
+                      {bagian.keterangan && bagian.keterangan.length > 100 && '...'}
                     </td>
                     <td style={{ padding: '1rem' }}>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
