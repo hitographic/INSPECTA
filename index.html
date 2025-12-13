@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/ISS favicon icon.svg" />
+    <link rel="apple-touch-icon" href="/ISS favicon icon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#8B5CF6" />
+    <meta name="description" content="ISS - Indofood Sanitation System untuk Quality Assurance" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ISS" />
+    <title>INSPECTA - Indofood Sanitation Performance Evaluation & Control Tracking Application</title>
+    <script>
+      // Handle SPA routing for GitHub Pages
+      (function(l) {
+        if (l.search[1] === '/' ) {
+          var decoded = l.search.slice(1).split('&').map(function(s) {
+            return s.replace(/~and~/g, '&')
+          }).join('?');
+          window.history.replaceState(null, null,
+              l.pathname.slice(0, -1) + decoded + l.hash
+          );
+        }
+      }(window.location))
+
+      // Global error handler
+      window.addEventListener('error', function(event) {
+        console.error('[GLOBAL ERROR]', event.error || event.message);
+
+        document.getElementById('root').innerHTML =
+          '<div style="padding: 20px; font-family: sans-serif; max-width: 800px; margin: 50px auto;">' +
+          '<div style="background: #fee; border: 2px solid #f00; border-radius: 8px; padding: 20px;">' +
+          '<h1 style="color: #c00;">⚠️ JavaScript Error</h1>' +
+          '<p><strong>Error:</strong> ' + (event.error ? event.error.message : event.message) + '</p>' +
+          '<p><strong>File:</strong> ' + (event.filename || 'unknown') + '</p>' +
+          '<p><strong>Line:</strong> ' + (event.lineno || 'unknown') + ':' + (event.colno || 'unknown') + '</p>' +
+          '<h3>Solutions:</h3>' +
+          '<ul>' +
+          '<li>Hard refresh: <strong>Ctrl+Shift+R</strong> (Windows) or <strong>Cmd+Shift+R</strong> (Mac)</li>' +
+          '<li>Clear browser cache completely</li>' +
+          '<li>Try different browser</li>' +
+          '<li>Check browser console (F12) for more details</li>' +
+          '</ul>' +
+          '<button onclick="location.reload()" style="padding: 12px 24px; background: #10b981; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; margin-top: 20px;">Reload Page</button>' +
+          '</div></div>';
+      });
+
+      // Unhandled promise rejection handler
+      window.addEventListener('unhandledrejection', function(event) {
+        console.error('[UNHANDLED PROMISE REJECTION]', event.reason);
+
+        document.getElementById('root').innerHTML =
+          '<div style="padding: 20px; font-family: sans-serif; max-width: 800px; margin: 50px auto;">' +
+          '<div style="background: #fee; border: 2px solid #f00; border-radius: 8px; padding: 20px;">' +
+          '<h1 style="color: #c00;">⚠️ Promise Rejection</h1>' +
+          '<p><strong>Reason:</strong> ' + (event.reason || 'Unknown error') + '</p>' +
+          '<h3>This usually happens when:</h3>' +
+          '<ul>' +
+          '<li>Network connection failed</li>' +
+          '<li>Supabase service is unreachable</li>' +
+          '<li>API keys are missing or invalid</li>' +
+          '</ul>' +
+          '<button onclick="location.reload()" style="padding: 12px 24px; background: #10b981; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; margin-top: 20px;">Reload Page</button>' +
+          '</div></div>';
+      });
+    </script>
+    <script type="module" crossorigin src="/assets/index-BfiFwj3t.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-F0fWo4QI.css">
+  <link rel="manifest" href="/manifest.webmanifest"></head>
+  <body>
+    <div id="root">
+      <div style="display: flex; justify-content: center; align-items: center; min-height: 100vh; background: linear-gradient(135deg, #10b981 0%, #059669 100%); font-family: system-ui, -apple-system, sans-serif;">
+        <div style="text-align: center; color: white;">
+          <div style="font-size: 48px; margin-bottom: 20px;">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite;">
+              <path d="M21 12a9 9 0 11-6.219-8.56"></path>
+            </svg>
+          </div>
+          <h1 style="font-size: 28px; font-weight: 700; margin: 0 0 10px 0;">INSPECTA</h1>
+          <p style="font-size: 16px; opacity: 0.9; margin: 0;">Loading application...</p>
+          <p style="font-size: 14px; opacity: 0.7; margin-top: 20px;">If this takes too long, check your connection</p>
+        </div>
+      </div>
+    </div>
+    <style>
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      body {
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+  </body>
+</html>

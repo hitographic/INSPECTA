@@ -1,0 +1,4 @@
+nik,password,full_name,role,menus,plants
+12345,password123,John Doe,qc_field,sanitasi_besar,Plant-1
+67890,pass456,Jane Smith,supervisor,"sanitasi_besar,kliping","Plant-1,Plant-2"
+11223,admin789,Admin User,admin,"sanitasi_besar,kliping,monitoring_area,audit_internal","Plant-1,Plant-2,Plant-3"
