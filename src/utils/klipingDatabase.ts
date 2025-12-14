@@ -124,6 +124,7 @@ export const getKlipingRecords = async (filters?: {
     let query = supabase
       .from('kliping_records')
       .select('id, id_unik, plant, tanggal, line, regu, shift, flavor, pengamatan_ke, mesin, created_by, created_at, updated_at, is_complete, pengamatan_timestamp')
+      .order('tanggal', { ascending: false })
       .order('created_at', { ascending: false });
 
     if (filters?.plant) {
@@ -155,6 +156,9 @@ export const getKlipingRecords = async (filters?: {
       query = query.eq('shift', filters.shift);
       console.log('[KLIPING] Filtering by shift:', filters.shift);
     }
+
+    // Remove the default 1000 row limit by setting a higher limit
+    query = query.limit(10000);
 
     const { data, error } = await query;
 
