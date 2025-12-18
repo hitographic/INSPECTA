@@ -3,50 +3,108 @@ import { logDelete } from './auditLog';
 import { KlipingRecord } from '../types/database';
 import { requestQueue } from './requestQueue';
 
-export const insertKlipingRecord = async (record: KlipingRecord, skipDuplicateCheck: boolean = false): Promise<{ success: boolean; id?: string; error?: string; skipped?: boolean }> => {
+type DbResult<T> = { success: true; data: T } | { success: false; error: any };
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const isTransientNetworkError = (err: any): boolean => {
+  const msg = String(err?.message || err || '');
+  const details = String(err?.details || '');
+
+  // Browser & Node undici often throw/return this for temporary network/payload failures
+  if (msg.includes('fetch failed') || details.includes('fetch failed')) return true;
+  if (msg.toLowerCase().includes('network')) return true;
+  if (msg.includes('Failed to fetch')) return true;
+
+  // PostgREST/Supabase transient-ish HTTP codes
+  const status = err?.status || err?.statusCode;
+  if (status === 408 || status === 409 || status === 425 || status === 429) return true;
+  if (status >= 500) return true;
+
+  return false;
+};
+
+const runWithRetry = async <T>(fn: () => Promise<DbResult<T>>, opts?: { retries?: number; baseDelayMs?: number; label?: string }): Promise<DbResult<T>> => {
+  const retries = opts?.retries ?? 3;
+  const baseDelayMs = opts?.baseDelayMs ?? 300;
+  const label = opts?.label ?? 'db-op';
+
+  let attempt = 0;
+  while (true) {
+    const result = await fn();
+    if (result.success) return result;
+
+    attempt++;
+    const transient = isTransientNetworkError(result.error);
+    if (!transient || attempt > retries) {
+      console.error(`[KLIPING] ${label} failed (attempt ${attempt}/${retries + 1})`, result.error);
+      return result;
+    }
+
+    const delay = baseDelayMs * Math.pow(2, attempt - 1);
+    console.warn(`[KLIPING] ${label} transient failure, retrying in ${delay}ms (attempt ${attempt}/${retries + 1})`);
+    await sleep(delay);
+  }
+};
+
+export const insertKlipingRecord = async (
+  record: KlipingRecord,
+  skipDuplicateCheck: boolean = false
+): Promise<{ success: boolean; id?: string; error?: string; skipped?: boolean; rawError?: any }> => {
   try {
-    if (!skipDuplicateCheck) {
-      const { data: existing, error: checkError } = await supabase
+    // Throttle inserts to avoid bursts that can intermittently fail on weak networks
+    const op = async (): Promise<DbResult<{ id: string }>> => {
+      if (!skipDuplicateCheck) {
+        const { data: existing, error: checkError } = await supabase
+          .from('kliping_records')
+          .select('id')
+          .eq('plant', record.plant)
+          .eq('tanggal', record.tanggal)
+          .eq('line', record.line)
+          .eq('regu', record.regu)
+          .eq('shift', record.shift)
+          .eq('id_unik', record.id_unik)
+          .eq('mesin', record.mesin)
+          .maybeSingle();
+
+        if (checkError) {
+          console.error('Error checking existing record:', checkError);
+          return { success: false, error: checkError };
+        }
+
+        if (existing) {
+          console.log('Record already exists, skipping:', {
+            id_unik: record.id_unik,
+            mesin: record.mesin
+          });
+          return { success: true, data: { id: existing.id } };
+        }
+      }
+
+      const { data, error } = await supabase
         .from('kliping_records')
+        .insert([record])
         .select('id')
-        .eq('plant', record.plant)
-        .eq('tanggal', record.tanggal)
-        .eq('line', record.line)
-        .eq('regu', record.regu)
-        .eq('shift', record.shift)
-        .eq('id_unik', record.id_unik)
-        .eq('mesin', record.mesin)
-        .maybeSingle();
+        .single();
 
-      if (checkError) {
-        console.error('Error checking existing record:', checkError);
-        return { success: false, error: checkError.message };
+      if (error) {
+        console.error('Error inserting kliping record:', error);
+        return { success: false, error };
       }
 
-      if (existing) {
-        console.log('Record already exists, skipping:', {
-          id_unik: record.id_unik,
-          mesin: record.mesin
-        });
-        return { success: true, id: existing.id, skipped: true };
-      }
+      return { success: true, data: { id: data.id } };
+    };
+
+    const result = await requestQueue.add(() => runWithRetry(op, { label: 'insertKlipingRecord' }));
+
+    if (!result.success) {
+      return { success: false, error: result.error?.message || String(result.error), rawError: result.error };
     }
 
-    const { data, error } = await supabase
-      .from('kliping_records')
-      .insert([record])
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error inserting kliping record:', error);
-      return { success: false, error: error.message };
-    }
-
-    return { success: true, id: data.id };
+    return { success: true, id: result.data.id };
   } catch (error) {
     console.error('Error in insertKlipingRecord:', error);
-    return { success: false, error: String(error) };
+    return { success: false, error: String((error as any)?.message || error), rawError: error };
   }
 };
 

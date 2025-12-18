@@ -744,7 +744,11 @@ const CreateKlipingScreen: React.FC = () => {
 
           const result = await insertKlipingRecord(record as KlipingRecord, true);
           if (!result.success) {
-            alert(`Gagal menyimpan data: ${result.error}`);
+            const raw = (result as any).rawError;
+            const extra = raw
+              ? `\n\nDetail: ${raw.message || ''} ${raw.code ? `(Code: ${raw.code})` : ''} ${raw.status ? `(HTTP: ${raw.status})` : ''}`
+              : '';
+            alert(`Gagal menyimpan data: ${result.error}${extra}\n\nCoba ulang ya. Kalau pakai foto besar, coba ambil ulang/foto lebih kecil atau pakai jaringan yang stabil.`);
             setSaving(false);
             return;
           }
