@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import supabase from './supabase';
 import { logDelete } from './auditLog';
 
 export interface MonitoringRecord {

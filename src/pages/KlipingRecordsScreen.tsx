@@ -4,7 +4,7 @@ import { ArrowLeft, Plus, FileDown, Trash2, Eye, X } from 'lucide-react';
 import { KlipingRecord } from '../types/database';
 import { getKlipingRecords, getKlipingRecordsWithPhotos, getKlipingRecordPhotos, countKlipingPhotos, REGU_OPTIONS, SHIFT_OPTIONS, FOTO_TYPES } from '../utils/klipingDatabase';
 import { exportKlipingToExcel, exportKlipingToPDF, exportAllKlipingSequential } from '../utils/klipingExport';
-import { supabase } from '../utils/supabase';
+import supabase from '../utils/supabase';
 import { PLANTS } from '../constants/AppConstants';
 import { getUserPermissions } from '../utils/authService';
 import { requestQueue } from '../utils/requestQueue';

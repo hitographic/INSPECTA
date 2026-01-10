@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import supabase from './supabase';
 
 /**
  * Updates all records with status 'draft' or 'DRAFT' to 'completed'

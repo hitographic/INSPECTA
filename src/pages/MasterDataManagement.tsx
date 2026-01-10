@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, Edit, Trash2, Save, X, Search, Filter } from 'lucide-react';
-import { supabase } from '../utils/supabase';
+import supabase from '../utils/supabase';
 import { authService } from '../utils/authService';
 
 interface Area {

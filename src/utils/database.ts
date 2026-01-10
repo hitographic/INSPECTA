@@ -1,5 +1,5 @@
 import { SanitationRecord } from '../types/database';
-import { supabase } from '../utils/supabase';
+import supabase from '../utils/supabase';
 import { requestQueue } from './requestQueue';
 import { logDelete } from './auditLog';
 

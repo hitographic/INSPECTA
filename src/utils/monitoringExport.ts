@@ -3,7 +3,7 @@ import jsPDF from 'jspdf';
 import { MonitoringRecord } from './monitoringDatabase';
 import { cropImageToSquare, cropImageToSquareForExcel } from './imageUtils';
 import { sortAreasByDisplayOrder } from './masterData';
-import { supabase } from './supabase';
+import supabase from './supabase';
 
 // Helper function to get user's full name from username (NIK)
 // Export this function so it can be used in other components

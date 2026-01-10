@@ -2,7 +2,7 @@ import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import { SanitationRecord } from '../types/database';
 import { getRecordById } from './database';
-import { supabase } from './supabase';
+import supabase from './supabase';
 import { getAreas, getBagianByAreaName } from './masterData';
 
 // Convert base64 image to buffer for ExcelJS

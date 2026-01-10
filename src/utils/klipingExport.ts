@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import { KlipingRecord } from '../types/database';
-import { supabase } from './supabase';
+import supabase from './supabase';
 import { requestQueue } from './requestQueue';
 
 const fetchRecordPhotos = async (recordId: string): Promise<any> => {
