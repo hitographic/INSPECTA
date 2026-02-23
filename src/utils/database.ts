@@ -14,7 +14,7 @@ const log = (message: string, data?: any) => {
 
 class DatabaseManager {
   async init(): Promise<void> {
-    // Test connection to Supabase
+    // Test connection to Supabase (non-blocking - don't throw on failure)
     try {
       log('Testing database connection...');
       const { data, error } = await supabase
@@ -22,14 +22,15 @@ class DatabaseManager {
         .select('count', { count: 'exact', head: true });
       
       if (error) {
-        log('Database connection error:', error);
-        throw error;
+        log('Database connection error (non-fatal):', error);
+        // Don't throw - let the app continue and try loading records anyway
+        return;
       }
       
       log('Database connection successful', { count: data });
     } catch (error) {
-      log('Failed to connect to database:', error);
-      throw error;
+      log('Failed to connect to database (non-fatal):', error);
+      // Don't throw - let the app continue
     }
   }
 

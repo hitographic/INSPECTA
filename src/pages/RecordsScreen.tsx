@@ -36,8 +36,11 @@ export default function RecordsScreen() {
       return;
     }
 
-    initDatabase().then(() => {
-      loadRecords();
+    // Don't block on initDatabase - load records directly
+    // initDatabase is just a connection test, not required for loading data
+    loadRecords();
+    initDatabase().catch(err => {
+      console.warn('[RECORDS SCREEN] initDatabase failed (non-fatal):', err);
     });
 
     return () => {
