@@ -337,6 +337,14 @@ export default function RecordsScreen() {
     return record.foto_sebelum_timestamp && record.foto_sesudah_timestamp;
   };
 
+  // Prevent global promise rejection from showing reload UI
+  if (typeof window !== 'undefined') {
+    window.addEventListener('unhandledrejection', function(event) {
+      console.warn('[GLOBAL] Unhandled promise rejection:', event.reason);
+      event.preventDefault();
+    });
+  }
+
   if (isLoading) {
     return (
       <div className="container">
