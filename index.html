@@ -48,21 +48,11 @@
 
       // Unhandled promise rejection handler
       window.addEventListener('unhandledrejection', function(event) {
-        console.error('[UNHANDLED PROMISE REJECTION]', event.reason);
-
-        document.getElementById('root').innerHTML =
-          '<div style="padding: 20px; font-family: sans-serif; max-width: 800px; margin: 50px auto;">' +
-          '<div style="background: #fee; border: 2px solid #f00; border-radius: 8px; padding: 20px;">' +
-          '<h1 style="color: #c00;">⚠️ Promise Rejection</h1>' +
-          '<p><strong>Reason:</strong> ' + (event.reason || 'Unknown error') + '</p>' +
-          '<h3>This usually happens when:</h3>' +
-          '<ul>' +
-          '<li>Network connection failed</li>' +
-          '<li>Supabase service is unreachable</li>' +
-          '<li>API keys are missing or invalid</li>' +
-          '</ul>' +
-          '<button onclick="location.reload()" style="padding: 12px 24px; background: #10b981; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; margin-top: 20px;">Reload Page</button>' +
-          '</div></div>';
+        console.warn('[UNHANDLED PROMISE REJECTION]', event.reason);
+        // Prevent default browser error handling
+        event.preventDefault();
+        // Don't destroy the React app for non-fatal errors like database connection issues
+        // The app has its own error handling for these cases
       });
     </script>
   </head>
