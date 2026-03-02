@@ -2,8 +2,8 @@
 // For GitHub Pages deployment, these values are embedded at build time
 
 export const ENV_CONFIG = {
-  SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL || 'https://kugvoxhacfbjweqsqgdx.supabase.co',
-  SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY || 'sb_publishable_0TntBHuHVOyLGpkp5Sd43w_AkpI0c-c'
+  SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL || 'https://irmxvpltmhdeuovlfgnk.supabase.co',
+  SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY || 'sb_publishable_fpYrkB8e71lSXLdRIjFMZw_9jEWaBQo'
 };
 
 // Validate configuration
