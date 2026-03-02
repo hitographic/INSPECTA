@@ -1,0 +1,773 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { ArrowLeft, Camera, Upload, Eye, Trash2 } from 'lucide-react';
+import { KlipingRecord } from '../types/database';
+import {
+  insertKlipingRecord,
+  updateKlipingRecord,
+  MESIN_OPTIONS,
+  FOTO_TYPES
+} from '../utils/klipingDatabase';
+import { CameraManager } from '../utils/camera';
+
+interface LocationState {
+  plant: string;
+  line: string;
+  regu: string;
+  shift: string;
+  record?: KlipingRecord;
+  mode?: 'create' | 'edit';
+}
+
+const CreateKlipingScreen: React.FC = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const state = location.state as LocationState;
+
+  const [plant] = useState(state?.plant || 'Plant-1');
+  const [line] = useState(state?.line || 'Line 1');
+  const [regu] = useState(state?.regu || 'A');
+  const [shift] = useState(state?.shift || '1');
+  const [tanggal, setTanggal] = useState(state?.record?.tanggal || new Date().toISOString().split('T')[0]);
+
+  const [pengamatan, setPengamatan] = useState(state?.record?.pengamatan_1 || '');
+  const [flavor, setFlavor] = useState(state?.record?.pengamatan_1_flavor || '');
+  const [mesin, setMesin] = useState(state?.record?.pengamatan_1_mesin || '');
+  const [timestamp, setTimestamp] = useState(state?.record?.pengamatan_1_timestamp || '');
+  const [showMesinFoto, setShowMesinFoto] = useState(!!state?.record?.pengamatan_1_timestamp);
+
+  const [mesinFotos, setMesinFotos] = useState<{ [mesin: string]: { [fotoKey: string]: string } }>(() => {
+    if (state?.record?.mesin_fotos) {
+      try {
+        return typeof state.record.mesin_fotos === 'string'
+          ? JSON.parse(state.record.mesin_fotos)
+          : state.record.mesin_fotos;
+      } catch {
+        return {};
+      }
+    }
+    return {};
+  });
+
+  const [recordId, setRecordId] = useState<number | undefined>(state?.record?.id);
+  const [saving, setSaving] = useState(false);
+
+  const [cameraVisible, setCameraVisible] = useState(false);
+  const [currentFotoKey, setCurrentFotoKey] = useState('');
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [cameraError, setCameraError] = useState('');
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const cameraManager = useRef(new CameraManager());
+  const uploadRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+
+  useEffect(() => {
+    if (mesin && !mesinFotos[mesin]) {
+      setMesinFotos(prev => ({
+        ...prev,
+        [mesin]: {}
+      }));
+    }
+  }, [mesin]);
+
+  const getCurrentMesinFotos = () => {
+    return mesin ? (mesinFotos[mesin] || {}) : {};
+  };
+
+  const setCurrentMesinFoto = (fotoKey: string, value: string) => {
+    if (!mesin) return;
+
+    setMesinFotos(prev => ({
+      ...prev,
+      [mesin]: {
+        ...(prev[mesin] || {}),
+        [fotoKey]: value
+      }
+    }));
+  };
+
+  const handleGenerate = () => {
+    if (!pengamatan || !flavor) {
+      alert('Mohon isi Pengamatan dan Flavor terlebih dahulu!');
+      return;
+    }
+
+    const ts = new Date().toISOString();
+    setTimestamp(ts);
+    setShowMesinFoto(true);
+  };
+
+  const openCamera = async (fotoKey: string) => {
+    setCurrentFotoKey(fotoKey);
+    setCameraVisible(true);
+    setCameraError('');
+    setIsCapturing(false);
+
+    setTimeout(async () => {
+      if (videoRef.current) {
+        const success = await cameraManager.current.startCamera(videoRef.current);
+        if (!success) {
+          setCameraError('Gagal mengakses kamera. Pastikan izin kamera telah diberikan.');
+        }
+      }
+    }, 100);
+  };
+
+  const takePicture = async () => {
+    if (isCapturing) return;
+
+    setIsCapturing(true);
+    setCameraError('');
+
+    try {
+      const photoDataUrl = await cameraManager.current.capturePhoto();
+
+      if (photoDataUrl) {
+        setCurrentMesinFoto(currentFotoKey, photoDataUrl);
+        closeCamera();
+      } else {
+        setCameraError('Gagal mengambil foto. Silakan coba lagi.');
+      }
+    } catch (error) {
+      console.error('Error taking picture:', error);
+      setCameraError('Gagal mengambil foto. Silakan coba lagi.');
+    } finally {
+      setIsCapturing(false);
+    }
+  };
+
+  const closeCamera = () => {
+    cameraManager.current.stopCamera();
+    setCameraVisible(false);
+    setCurrentFotoKey('');
+    setCameraError('');
+    setIsCapturing(false);
+  };
+
+  const handleUploadFoto = (fotoKey: string) => {
+    uploadRefs.current[fotoKey]?.click();
+  };
+
+  const handleFileChange = async (fotoKey: string, event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const processedImage = await cameraManager.current.processUploadedImage(file);
+      if (processedImage) {
+        setCurrentMesinFoto(fotoKey, processedImage);
+      } else {
+        alert('Gagal memproses gambar');
+      }
+    } catch (error) {
+      console.error('Error processing uploaded image:', error);
+      alert('Gagal memproses gambar');
+    }
+
+    if (event.target) {
+      event.target.value = '';
+    }
+  };
+
+  const getCurrentUser = () => {
+    try {
+      const currentUserStr = localStorage.getItem('currentUser');
+      if (currentUserStr) {
+        const user = JSON.parse(currentUserStr);
+        return user.full_name || user.username || 'Unknown';
+      }
+    } catch (error) {
+      console.error('Error getting current user:', error);
+    }
+    return 'Unknown';
+  };
+
+  const buildRecord = (isComplete: boolean): Partial<KlipingRecord> => {
+    const record: any = {
+      plant,
+      tanggal,
+      line,
+      regu,
+      shift,
+      pengamatan_1: pengamatan || undefined,
+      pengamatan_1_flavor: flavor || undefined,
+      pengamatan_1_mesin: mesin || undefined,
+      pengamatan_1_timestamp: timestamp || undefined,
+      mesin_fotos: JSON.stringify(mesinFotos),
+      created_by: getCurrentUser(),
+      is_complete: isComplete
+    };
+
+    if (recordId) {
+      record.id = recordId;
+    }
+
+    return record;
+  };
+
+  const handleSimpanSementara = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    setSaving(true);
+    try {
+      const record = buildRecord(false);
+
+      if (recordId) {
+        const result = await updateKlipingRecord(recordId, record as KlipingRecord);
+        if (result.success) {
+          alert('Data berhasil disimpan sementara');
+        } else {
+          alert(`Gagal menyimpan data: ${result.error}`);
+        }
+      } else {
+        const result = await insertKlipingRecord(record as KlipingRecord);
+        if (result.success && result.id) {
+          setRecordId(result.id);
+          alert('Data berhasil disimpan sementara');
+        } else {
+          alert(`Gagal menyimpan data: ${result.error}`);
+        }
+      }
+    } catch (error) {
+      console.error('Error saving record:', error);
+      alert('Gagal menyimpan data');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSimpanSemua = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    setSaving(true);
+    try {
+      const record = buildRecord(true);
+
+      if (recordId) {
+        const result = await updateKlipingRecord(recordId, record as KlipingRecord);
+        if (result.success) {
+          alert('Data berhasil disimpan');
+          navigate('/kliping-records', { state: { plant } });
+        } else {
+          alert(`Gagal menyimpan data: ${result.error}`);
+        }
+      } else {
+        const result = await insertKlipingRecord(record as KlipingRecord);
+        if (result.success) {
+          alert('Data berhasil disimpan');
+          navigate('/kliping-records', { state: { plant } });
+        } else {
+          alert(`Gagal menyimpan data: ${result.error}`);
+        }
+      }
+    } catch (error) {
+      console.error('Error saving record:', error);
+      alert('Gagal menyimpan data');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const renderFotoSection = (fotoType: typeof FOTO_TYPES[0]) => {
+    const currentFotos = getCurrentMesinFotos();
+    const fotoValue = currentFotos[fotoType.key] || '';
+
+    return (
+      <div key={fotoType.key} style={{ marginBottom: '24px' }}>
+        <h4 style={{ fontSize: '16px', fontWeight: '600', color: '#2d3748', marginBottom: '4px' }}>
+          {fotoType.label}
+        </h4>
+        <p style={{ fontSize: '14px', color: '#718096', marginBottom: '12px' }}>
+          {fotoType.description}
+        </p>
+
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
+          <button
+            type="button"
+            onClick={() => openCamera(fotoType.key)}
+            style={{
+              flex: 1,
+              padding: '14px',
+              background: 'white',
+              border: '2px dashed #48bb78',
+              borderRadius: '12px',
+              color: '#48bb78',
+              fontSize: '15px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px'
+            }}
+          >
+            <Camera size={18} />
+            Ambil Foto
+          </button>
+          <button
+            type="button"
+            onClick={() => handleUploadFoto(fotoType.key)}
+            style={{
+              flex: 1,
+              padding: '14px',
+              background: 'white',
+              border: '2px dashed #48bb78',
+              borderRadius: '12px',
+              color: '#48bb78',
+              fontSize: '15px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px'
+            }}
+          >
+            <Upload size={18} />
+            Upload Foto
+          </button>
+          <input
+            ref={el => uploadRefs.current[fotoType.key] = el}
+            type="file"
+            accept="image/*"
+            onChange={(e) => handleFileChange(fotoType.key, e)}
+            style={{ display: 'none' }}
+          />
+        </div>
+
+        {fotoValue && (
+          <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+            <button
+              type="button"
+              onClick={() => setPreviewImage(fotoValue)}
+              style={{
+                flex: 1,
+                padding: '12px',
+                background: '#f0fdf4',
+                border: '1px solid #bbf7d0',
+                borderRadius: '8px',
+                color: '#16a34a',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px'
+              }}
+            >
+              <Eye size={16} />
+              Preview Foto
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (confirm('Hapus foto ini?')) {
+                  setCurrentMesinFoto(fotoType.key, '');
+                }
+              }}
+              style={{
+                flex: 1,
+                padding: '12px',
+                background: '#fef2f2',
+                border: '1px solid #fecaca',
+                borderRadius: '8px',
+                color: '#dc2626',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px'
+              }}
+            >
+              <Trash2 size={16} />
+              Hapus Foto
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  if (cameraVisible) {
+    return (
+      <div className="camera-container">
+        {cameraError && (
+          <div className="camera-error">
+            {cameraError}
+          </div>
+        )}
+
+        <div style={{
+          position: 'absolute',
+          top: '1rem',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          color: 'white',
+          fontSize: '1.125rem',
+          fontWeight: '600',
+          zIndex: 10
+        }}>
+          {FOTO_TYPES.find(f => f.key === currentFotoKey)?.label || 'Ambil Foto'}
+        </div>
+
+        <video
+          ref={videoRef}
+          className="camera-video"
+          autoPlay
+          playsInline
+          muted
+        />
+
+        <div className="camera-overlay">
+          <button
+            className="capture-button"
+            onClick={takePicture}
+            disabled={isCapturing || !!cameraError}
+          >
+            <div className={`capture-button-inner ${isCapturing ? 'capturing' : ''}`} />
+          </button>
+
+          {isCapturing && (
+            <div style={{ color: 'white', marginTop: '0.5rem' }}>
+              Mengambil foto...
+            </div>
+          )}
+
+          <button
+            className="cancel-button"
+            onClick={closeCamera}
+          >
+            Batal
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', padding: '20px' }}>
+      <div style={{ maxWidth: '600px', margin: '0 auto' }}>
+        <button
+          onClick={() => navigate('/kliping-records', { state: { plant } })}
+          style={{
+            background: 'white',
+            border: 'none',
+            borderRadius: '16px',
+            padding: '16px',
+            marginBottom: '20px',
+            cursor: 'pointer',
+            boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+          }}
+        >
+          <ArrowLeft size={24} color="#10b981" />
+        </button>
+
+        <div style={{
+          background: 'white',
+          borderRadius: '24px',
+          padding: '32px',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.1)'
+        }}>
+          <h1 style={{
+            fontSize: '28px',
+            fontWeight: '700',
+            textAlign: 'center',
+            marginBottom: '8px',
+            color: '#1a202c'
+          }}>
+            Create Kliping
+          </h1>
+          <p style={{
+            textAlign: 'center',
+            color: '#718096',
+            marginBottom: '24px'
+          }}>
+            {plant}
+          </p>
+
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', color: '#2d3748' }}>
+              Tanggal
+            </label>
+            <input
+              type="date"
+              value={tanggal}
+              onChange={(e) => setTanggal(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '14px',
+                borderRadius: '12px',
+                border: '1px solid #e2e8f0',
+                fontSize: '16px',
+                background: '#f7fafc'
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+            <div>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', color: '#2d3748', fontSize: '14px' }}>
+                Line
+              </label>
+              <div style={{
+                padding: '14px',
+                borderRadius: '12px',
+                background: '#d1fae5',
+                textAlign: 'center',
+                fontWeight: '600',
+                color: '#065f46'
+              }}>
+                {line}
+              </div>
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', color: '#2d3748', fontSize: '14px' }}>
+                Regu
+              </label>
+              <div style={{
+                padding: '14px',
+                borderRadius: '12px',
+                background: '#d1fae5',
+                textAlign: 'center',
+                fontWeight: '600',
+                color: '#065f46'
+              }}>
+                {regu}
+              </div>
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', color: '#2d3748', fontSize: '14px' }}>
+                Shift
+              </label>
+              <div style={{
+                padding: '14px',
+                borderRadius: '12px',
+                background: '#d1fae5',
+                textAlign: 'center',
+                fontWeight: '600',
+                color: '#065f46'
+              }}>
+                {shift}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+            <div>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', color: '#2d3748', fontSize: '14px' }}>
+                Pengamatan
+              </label>
+              <select
+                value={pengamatan}
+                onChange={(e) => setPengamatan(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e0',
+                  fontSize: '14px',
+                  background: 'white'
+                }}
+              >
+                <option value="">Pilih Pengamatan</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', color: '#2d3748', fontSize: '14px' }}>
+                Flavor
+              </label>
+              <input
+                type="text"
+                value={flavor}
+                onChange={(e) => setFlavor(e.target.value)}
+                placeholder="Masukkan flavor"
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e0',
+                  fontSize: '14px',
+                  background: 'white'
+                }}
+              />
+            </div>
+          </div>
+
+          <p style={{ fontSize: '13px', color: '#718096', fontStyle: 'italic', marginBottom: '12px' }}>
+            Generate untuk mengambil foto
+          </p>
+
+          <button
+            type="button"
+            onClick={handleGenerate}
+            disabled={!pengamatan || !flavor}
+            style={{
+              width: '100%',
+              padding: '14px',
+              background: (!pengamatan || !flavor) ? '#cbd5e0' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '12px',
+              fontSize: '16px',
+              fontWeight: '600',
+              cursor: (!pengamatan || !flavor) ? 'not-allowed' : 'pointer',
+              marginBottom: '20px'
+            }}
+          >
+            Generate
+          </button>
+
+          {showMesinFoto && (
+            <>
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', color: '#2d3748', fontSize: '14px' }}>
+                  Pilih Mesin
+                </label>
+                <select
+                  value={mesin}
+                  onChange={(e) => setMesin(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: '2px solid #10b981',
+                    fontSize: '14px',
+                    background: 'white'
+                  }}
+                >
+                  <option value="">Pilih Mesin</option>
+                  {MESIN_OPTIONS.map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </div>
+
+              {mesin && (
+                <div style={{
+                  background: '#f0fdf4',
+                  padding: '16px',
+                  borderRadius: '12px',
+                  marginBottom: '20px',
+                  border: '2px solid #bbf7d0'
+                }}>
+                  <p style={{
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    color: '#16a34a',
+                    textAlign: 'center'
+                  }}>
+                    📸 Ambil foto untuk {mesin}
+                  </p>
+                </div>
+              )}
+
+              {mesin && FOTO_TYPES.map(fotoType => renderFotoSection(fotoType))}
+            </>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '32px' }}>
+            <button
+              type="button"
+              onClick={handleSimpanSementara}
+              disabled={saving}
+              style={{
+                padding: '16px',
+                background: 'white',
+                color: '#10b981',
+                border: '2px solid #10b981',
+                borderRadius: '12px',
+                fontSize: '16px',
+                fontWeight: '600',
+                cursor: saving ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {saving ? 'Menyimpan...' : 'Simpan Sementara'}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSimpanSemua}
+              disabled={saving}
+              style={{
+                padding: '16px',
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '12px',
+                fontSize: '16px',
+                fontWeight: '600',
+                cursor: saving ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {saving ? 'Menyimpan...' : 'Simpan Semua'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {previewImage && (
+        <div
+          onClick={() => setPreviewImage(null)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.9)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000,
+            padding: '20px'
+          }}
+        >
+          <div style={{ maxWidth: '90%', maxHeight: '90%', position: 'relative' }}>
+            <img
+              src={previewImage}
+              alt="Preview"
+              style={{
+                maxWidth: '100%',
+                maxHeight: '90vh',
+                borderRadius: '8px'
+              }}
+            />
+            <button
+              onClick={() => setPreviewImage(null)}
+              style={{
+                position: 'absolute',
+                top: '-40px',
+                right: '0',
+                background: 'white',
+                color: '#2d3748',
+                border: 'none',
+                borderRadius: '50%',
+                width: '32px',
+                height: '32px',
+                fontSize: '20px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default CreateKlipingScreen;

@@ -1,0 +1,586 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { ArrowLeft, Plus, FileDown, Trash2 } from 'lucide-react';
+import { MonitoringRecord, getMonitoringRecords, deleteMonitoringSession, REGU_OPTIONS, SHIFT_OPTIONS } from '../utils/monitoringDatabase';
+import { PLANTS } from '../constants/AppConstants';
+
+interface LocationState {
+  selectedPlant: string;
+}
+
+const MonitoringRecordsScreen: React.FC = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { selectedPlant } = (location.state as LocationState) || { selectedPlant: 'Plant-1' };
+
+  const [records, setRecords] = useState<MonitoringRecord[]>([]);
+  const [filteredRecords, setFilteredRecords] = useState<MonitoringRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [selectedLines, setSelectedLines] = useState<string[]>([]);
+  const [selectedRegus, setSelectedRegus] = useState<string[]>([]);
+  const [selectedShifts, setSelectedShifts] = useState<string[]>([]);
+  const [showLineDropdown, setShowLineDropdown] = useState(false);
+  const [showReguDropdown, setShowReguDropdown] = useState(false);
+  const [showShiftDropdown, setShowShiftDropdown] = useState(false);
+
+  const [showCreatePopup, setShowCreatePopup] = useState(false);
+  const [tempLine, setTempLine] = useState('');
+  const [tempRegu, setTempRegu] = useState('');
+  const [tempShift, setTempShift] = useState('');
+  const [tempTanggal, setTempTanggal] = useState(new Date().toISOString().split('T')[0]);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  const lines = PLANTS[selectedPlant as keyof typeof PLANTS]?.map(num => `Line ${num}`) || [];
+
+  useEffect(() => {
+    loadRecords();
+  }, [selectedPlant]);
+
+  useEffect(() => {
+    applyFilters();
+    setCurrentPage(1);
+  }, [records, startDate, endDate, selectedLines, selectedRegus, selectedShifts]);
+
+  const loadRecords = async () => {
+    setLoading(true);
+    try {
+      const data = await getMonitoringRecords(selectedPlant);
+      setRecords(data);
+    } catch (error) {
+      console.error('Error loading monitoring records:', error);
+      alert('Gagal memuat data monitoring');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const applyFilters = () => {
+    let filtered = [...records];
+
+    if (startDate) {
+      filtered = filtered.filter(r => r.tanggal >= startDate);
+    }
+    if (endDate) {
+      filtered = filtered.filter(r => r.tanggal <= endDate);
+    }
+    if (selectedLines.length > 0) {
+      filtered = filtered.filter(r => selectedLines.includes(r.line));
+    }
+    if (selectedRegus.length > 0) {
+      filtered = filtered.filter(r => selectedRegus.includes(r.regu));
+    }
+    if (selectedShifts.length > 0) {
+      filtered = filtered.filter(r => selectedShifts.includes(r.shift));
+    }
+
+    setFilteredRecords(filtered);
+  };
+
+  const groupRecordsBySession = (records: MonitoringRecord[]) => {
+    const grouped: { [key: string]: MonitoringRecord[] } = {};
+
+    records.forEach(record => {
+      const key = `${record.tanggal}_${record.line}_${record.regu}_${record.shift}`;
+      if (!grouped[key]) {
+        grouped[key] = [];
+      }
+      grouped[key].push(record);
+    });
+
+    return Object.values(grouped).map(group => group.sort((a, b) => a.data_number - b.data_number));
+  };
+
+  const getPaginatedGroups = (groups: MonitoringRecord[][]) => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return groups.slice(startIndex, endIndex);
+  };
+
+  const handleCreateClick = () => {
+    setShowCreatePopup(true);
+    setTempTanggal(new Date().toISOString().split('T')[0]);
+    setTempLine('');
+    setTempRegu('');
+    setTempShift('');
+  };
+
+  const handleCreateConfirm = () => {
+    if (!tempTanggal || !tempLine || !tempRegu || !tempShift) {
+      alert('Harap lengkapi semua field');
+      return;
+    }
+
+    navigate('/create-monitoring', {
+      state: {
+        plant: selectedPlant,
+        tanggal: tempTanggal,
+        line: tempLine,
+        regu: tempRegu,
+        shift: tempShift
+      }
+    });
+  };
+
+  const handleDeleteSession = async (group: MonitoringRecord[]) => {
+    if (!group.length) return;
+
+    const record = group[0];
+    const confirmDelete = window.confirm(
+      `Apakah Anda yakin ingin menghapus semua data monitoring untuk:\n` +
+      `Tanggal: ${new Date(record.tanggal).toLocaleDateString('id-ID')}\n` +
+      `Line: ${record.line}\n` +
+      `Regu: ${record.regu}\n` +
+      `Shift: ${record.shift}`
+    );
+
+    if (!confirmDelete) return;
+
+    try {
+      await deleteMonitoringSession(
+        record.plant,
+        record.tanggal,
+        record.line,
+        record.regu,
+        record.shift
+      );
+      alert('Data berhasil dihapus');
+      loadRecords();
+    } catch (error) {
+      console.error('Error deleting session:', error);
+      alert('Gagal menghapus data');
+    }
+  };
+
+  const handleEdit = (group: MonitoringRecord[]) => {
+    if (!group.length) return;
+    const record = group[0];
+    navigate('/create-monitoring', {
+      state: {
+        plant: record.plant,
+        tanggal: record.tanggal,
+        line: record.line,
+        regu: record.regu,
+        shift: record.shift,
+        editMode: true
+      }
+    });
+  };
+
+  const toggleLineFilter = (line: string) => {
+    setSelectedLines(prev =>
+      prev.includes(line) ? prev.filter(l => l !== line) : [...prev, line]
+    );
+  };
+
+  const toggleReguFilter = (regu: string) => {
+    setSelectedRegus(prev =>
+      prev.includes(regu) ? prev.filter(r => r !== regu) : [...prev, regu]
+    );
+  };
+
+  const toggleShiftFilter = (shift: string) => {
+    setSelectedShifts(prev =>
+      prev.includes(shift) ? prev.filter(s => s !== shift) : [...prev, shift]
+    );
+  };
+
+  const groupedRecords = groupRecordsBySession(filteredRecords);
+  const paginatedGroups = getPaginatedGroups(groupedRecords);
+  const totalPages = Math.ceil(groupedRecords.length / itemsPerPage);
+
+  const getSessionAreas = (group: MonitoringRecord[]) => {
+    const areas = [...new Set(group.map(r => r.area))];
+    return areas;
+  };
+
+  const getSessionStatus = (group: MonitoringRecord[]) => {
+    const completeCount = group.filter(r => r.status === 'complete').length;
+    return completeCount === group.length ? 'complete' : 'draft';
+  };
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-orange-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Memuat data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%)', padding: '1rem' }}>
+      <div className="max-w-4xl mx-auto">
+        <div className="flex justify-between items-center mb-6">
+          <button
+            onClick={() => navigate('/plant-selection-monitoring')}
+            className="p-3 bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow"
+          >
+            <ArrowLeft className="w-6 h-6 text-gray-700" />
+          </button>
+
+          <button
+            onClick={handleCreateClick}
+            className="flex items-center gap-2 px-6 py-3 bg-orange-500 text-white rounded-xl shadow-lg hover:bg-orange-600 transition-colors font-semibold"
+          >
+            <Plus className="w-5 h-5" />
+            Tambah Data
+          </button>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
+          <h1 className="text-3xl font-bold text-center mb-2">Monitoring Records</h1>
+          <p className="text-center text-gray-600 mb-6">{selectedPlant}</p>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Filter by Date
+              </label>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Tanggal Awal</label>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Tanggal Akhir</label>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Filter by Line
+              </label>
+              <div className="relative">
+                <button
+                  onClick={() => setShowLineDropdown(!showLineDropdown)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-left flex justify-between items-center bg-white hover:border-orange-400 transition-colors"
+                >
+                  <span className="text-gray-700">
+                    {selectedLines.length === 0 ? 'Semua Line' : `${selectedLines.length} Line dipilih`}
+                  </span>
+                  <span className="text-gray-400">▼</span>
+                </button>
+                {showLineDropdown && (
+                  <div className="absolute z-10 w-full mt-2 bg-white border border-gray-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    {lines.map(line => (
+                      <label key={line} className="flex items-center px-4 py-2 hover:bg-orange-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedLines.includes(line)}
+                          onChange={() => toggleLineFilter(line)}
+                          className="mr-3 w-4 h-4 text-orange-500 rounded focus:ring-orange-500"
+                        />
+                        <span className="text-gray-700">{line}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Filter by Regu
+              </label>
+              <div className="relative">
+                <button
+                  onClick={() => setShowReguDropdown(!showReguDropdown)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-left flex justify-between items-center bg-white hover:border-orange-400 transition-colors"
+                >
+                  <span className="text-gray-700">
+                    {selectedRegus.length === 0 ? 'Semua Regu' : `${selectedRegus.length} Regu dipilih`}
+                  </span>
+                  <span className="text-gray-400">▼</span>
+                </button>
+                {showReguDropdown && (
+                  <div className="absolute z-10 w-full mt-2 bg-white border border-gray-300 rounded-lg shadow-lg">
+                    {REGU_OPTIONS.map(regu => (
+                      <label key={regu} className="flex items-center px-4 py-2 hover:bg-orange-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedRegus.includes(regu)}
+                          onChange={() => toggleReguFilter(regu)}
+                          className="mr-3 w-4 h-4 text-orange-500 rounded focus:ring-orange-500"
+                        />
+                        <span className="text-gray-700">Regu {regu}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Filter by Shift
+              </label>
+              <div className="relative">
+                <button
+                  onClick={() => setShowShiftDropdown(!showShiftDropdown)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-left flex justify-between items-center bg-white hover:border-orange-400 transition-colors"
+                >
+                  <span className="text-gray-700">
+                    {selectedShifts.length === 0 ? 'Semua Shift' : `${selectedShifts.length} Shift dipilih`}
+                  </span>
+                  <span className="text-gray-400">▼</span>
+                </button>
+                {showShiftDropdown && (
+                  <div className="absolute z-10 w-full mt-2 bg-white border border-gray-300 rounded-lg shadow-lg">
+                    {SHIFT_OPTIONS.map(shift => (
+                      <label key={shift} className="flex items-center px-4 py-2 hover:bg-orange-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedShifts.includes(shift)}
+                          onChange={() => toggleShiftFilter(shift)}
+                          className="mr-3 w-4 h-4 text-orange-500 rounded focus:ring-orange-500"
+                        />
+                        <span className="text-gray-700">Shift {shift}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {filteredRecords.length > 0 && (
+            <button
+              onClick={() => {
+                if (window.confirm(`Hapus ${filteredRecords.length} data yang difilter?`)) {
+                  console.log('Delete filtered records');
+                }
+              }}
+              className="w-full mt-6 flex items-center justify-center gap-2 px-6 py-3 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors font-semibold"
+            >
+              <Trash2 className="w-5 h-5" />
+              Delete All Filtered Records ({filteredRecords.length})
+            </button>
+          )}
+
+          <div className="grid grid-cols-2 gap-4 mt-4">
+            <button className="flex items-center justify-center gap-2 px-6 py-3 bg-white border-2 border-green-500 text-green-600 rounded-xl hover:bg-green-50 transition-colors font-semibold">
+              <FileDown className="w-5 h-5" />
+              Export All Excel
+            </button>
+            <button className="flex items-center justify-center gap-2 px-6 py-3 bg-white border-2 border-red-500 text-red-600 rounded-xl hover:bg-red-50 transition-colors font-semibold">
+              <FileDown className="w-5 h-5" />
+              Export All PDF
+            </button>
+          </div>
+        </div>
+
+        {paginatedGroups.length === 0 ? (
+          <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
+            <p className="text-gray-500">Belum ada data monitoring</p>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-4">
+              {paginatedGroups.map((group, idx) => {
+                const record = group[0];
+                const areas = getSessionAreas(group);
+                const status = getSessionStatus(group);
+                const areaDataCounts = areas.map(area => {
+                  const count = group.filter(r => r.area === area).length;
+                  return { area, count };
+                });
+
+                return (
+                  <div key={idx} className="bg-white rounded-xl shadow-md p-6 border-l-4 border-orange-400">
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <h3 className="text-xl font-bold text-gray-800">
+                          {record.line} - Regu {record.regu} - Shift {record.shift}
+                        </h3>
+                        <p className="text-sm text-gray-600">
+                          {new Date(record.tanggal).toLocaleDateString('id-ID', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric'
+                          })}
+                        </p>
+                      </div>
+                      <span className={`px-4 py-1 rounded-full text-sm font-semibold ${
+                        status === 'complete'
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-yellow-100 text-yellow-700'
+                      }`}>
+                        {status === 'complete' ? 'Complete' : 'Draft'}
+                      </span>
+                    </div>
+
+                    <div className="mb-4">
+                      {areaDataCounts.map(({ area, count }) => (
+                        <div key={area} className="text-sm text-gray-700 mb-1">
+                          <span className="font-semibold">Area: {area}</span> ({count} data tersimpan)
+                        </div>
+                      ))}
+                    </div>
+
+                    <p className="text-xs text-gray-500 mb-4">
+                      Dibuat oleh: {record.created_by}
+                    </p>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <button className="px-4 py-2 bg-white border-2 border-green-500 text-green-600 rounded-lg hover:bg-green-50 transition-colors text-sm font-semibold">
+                        <FileDown className="w-4 h-4 inline mr-1" />
+                        Excel
+                      </button>
+                      <button className="px-4 py-2 bg-white border-2 border-red-500 text-red-600 rounded-lg hover:bg-red-50 transition-colors text-sm font-semibold">
+                        <FileDown className="w-4 h-4 inline mr-1" />
+                        PDF
+                      </button>
+                      <button
+                        onClick={() => handleEdit(group)}
+                        className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors text-sm font-semibold"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteSession(group)}
+                        className="col-span-3 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-semibold"
+                      >
+                        <Trash2 className="w-4 h-4 inline mr-1" />
+                        Del
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {totalPages > 1 && (
+              <div className="flex justify-center items-center gap-2 mt-6">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="px-4 py-2 bg-white rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  Previous
+                </button>
+                <span className="px-4 py-2 bg-white rounded-lg border border-gray-300">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-4 py-2 bg-white rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  Next
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {showCreatePopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full">
+            <h2 className="text-2xl font-bold mb-6 text-center">Pilih Line, Regu, dan Shift</h2>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Tanggal</label>
+                <input
+                  type="date"
+                  value={tempTanggal}
+                  onChange={(e) => setTempTanggal(e.target.value)}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent text-lg"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Line</label>
+                <select
+                  value={tempLine}
+                  onChange={(e) => setTempLine(e.target.value)}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent text-lg"
+                >
+                  <option value="">Pilih Line</option>
+                  {lines.map(line => (
+                    <option key={line} value={line}>{line}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Regu</label>
+                <div className="grid grid-cols-3 gap-3">
+                  {REGU_OPTIONS.map(regu => (
+                    <button
+                      key={regu}
+                      onClick={() => setTempRegu(regu)}
+                      className={`py-4 rounded-xl font-bold text-xl transition-all ${
+                        tempRegu === regu
+                          ? 'bg-orange-500 text-white shadow-lg'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {regu}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Shift</label>
+                <div className="grid grid-cols-3 gap-3">
+                  {SHIFT_OPTIONS.map(shift => (
+                    <button
+                      key={shift}
+                      onClick={() => setTempShift(shift)}
+                      className={`py-4 rounded-xl font-bold text-xl transition-all ${
+                        tempShift === shift
+                          ? 'bg-orange-500 text-white shadow-lg'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {shift}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mt-8">
+              <button
+                onClick={() => setShowCreatePopup(false)}
+                className="px-6 py-3 bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300 transition-colors font-semibold"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleCreateConfirm}
+                className="px-6 py-3 bg-orange-500 text-white rounded-xl hover:bg-orange-600 transition-colors font-semibold"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default MonitoringRecordsScreen;

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Redirecting...</title>
+  <script>
+    (function() {
+      var l = window.location;
+      var base = '/INSPECTA/';
+
+      // Get the path after /INSPECTA/
+      var path = l.pathname;
+      var subPath = '';
+
+      if (path.indexOf(base) === 0) {
+        subPath = path.substring(base.length);
+      } else {
+        subPath = path.replace(/^\//, '');
+      }
+
+      // Redirect to base with query string encoding
+      l.replace(
+        l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
+        base + '?/' + subPath +
+        (l.search ? '&' + l.search.slice(1).replace(/&/g, '~and~') : '') +
+        l.hash
+      );
+    })();
+  </script>
+</head>
+<body>
+</body>
+</html>

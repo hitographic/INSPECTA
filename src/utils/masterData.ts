@@ -1,0 +1,229 @@
+import supabase from './supabase';
+
+export interface Area {
+  id: string;
+  name: string;
+  display_order: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Bagian {
+  id: string;
+  area_id: string;
+  name: string;
+  keterangan: string;
+  line_numbers: string[];
+  display_order: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface LineConfig {
+  id: number;
+  line_number: string;
+  line_type: string;
+  plant: string;
+  is_active: boolean;
+}
+
+export const getAreas = async (): Promise<Area[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('sanitation_areas')
+      .select('*')
+      .order('display_order', { ascending: true });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching areas:', error);
+    return [];
+  }
+};
+
+export const getAreaDisplayOrder = async (areaName: string): Promise<number> => {
+  try {
+    const { data, error } = await supabase
+      .from('sanitation_areas')
+      .select('display_order')
+      .eq('name', areaName)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data?.display_order || 999;
+  } catch (error) {
+    console.error('Error fetching area display order:', error);
+    return 999;
+  }
+};
+
+export const sortAreasByDisplayOrder = async (areaNames: string[]): Promise<string[]> => {
+  try {
+    console.log('sortAreasByDisplayOrder called with:', areaNames);
+    const { data, error } = await supabase
+      .from('sanitation_areas')
+      .select('name, display_order')
+      .in('name', areaNames)
+      .order('display_order', { ascending: true });
+
+    console.log('Query result - data:', data, 'error:', error);
+    if (error) throw error;
+
+    // If no data found in sanitation_areas, return original order
+    if (!data || data.length === 0) {
+      console.log('No areas found in master data, returning original order:', areaNames);
+      return areaNames;
+    }
+
+    const result = data.map(a => a.name);
+    console.log('sortAreasByDisplayOrder returning:', result);
+    return result;
+  } catch (error) {
+    console.error('Error sorting areas:', error);
+    return areaNames;
+  }
+};
+
+export const getBagianByArea = async (areaId: string): Promise<Bagian[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('sanitation_bagian')
+      .select('*')
+      .eq('area_id', areaId)
+      .order('display_order', { ascending: true });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching bagian:', error);
+    return [];
+  }
+};
+
+export const getBagianByAreaName = async (areaName: string): Promise<Bagian[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('sanitation_bagian')
+      .select(`
+        *,
+        sanitation_areas!inner(name)
+      `)
+      .eq('sanitation_areas.name', areaName)
+      .order('display_order', { ascending: true });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching bagian by area name:', error);
+    return [];
+  }
+};
+
+export const getBagianForLine = async (lineNumber: string): Promise<{ [areaName: string]: Bagian[] }> => {
+  try {
+    // Fetch all bagian with their areas
+    const { data: bagianData, error: bagianError } = await supabase
+      .from('sanitation_bagian')
+      .select(`
+        *,
+        sanitation_areas(name, display_order)
+      `);
+
+    if (bagianError) throw bagianError;
+
+    // Filter in JavaScript since .contains() has JSON parsing issues
+    const filteredData = bagianData?.filter((item: any) => {
+      let lineNumbers = item.line_numbers || [];
+
+      // Parse if it's a string (JSONB columns may return as strings)
+      if (typeof lineNumbers === 'string') {
+        try {
+          lineNumbers = JSON.parse(lineNumbers);
+        } catch (e) {
+          console.error('Failed to parse line_numbers for:', item.name);
+          return false;
+        }
+      }
+
+      return Array.isArray(lineNumbers) && lineNumbers.includes(lineNumber);
+    });
+
+    const grouped: { [areaName: string]: { bagian: Bagian[], areaOrder: number } } = {};
+
+    filteredData?.forEach((item: any) => {
+      const areaName = item.sanitation_areas?.name || 'Unknown';
+      const areaOrder = item.sanitation_areas?.display_order || 999;
+
+      // Parse line_numbers if needed
+      let lineNumbers = item.line_numbers || [];
+      if (typeof lineNumbers === 'string') {
+        try {
+          lineNumbers = JSON.parse(lineNumbers);
+        } catch (e) {
+          lineNumbers = [];
+        }
+      }
+
+      if (!grouped[areaName]) {
+        grouped[areaName] = { bagian: [], areaOrder };
+      }
+      grouped[areaName].bagian.push({
+        id: item.id,
+        area_id: item.area_id,
+        name: item.name,
+        keterangan: item.keterangan,
+        line_numbers: lineNumbers,
+        display_order: item.display_order
+      });
+    });
+
+    const sortedGrouped: { [areaName: string]: Bagian[] } = {};
+
+    Object.entries(grouped)
+      .sort(([, a], [, b]) => a.areaOrder - b.areaOrder)
+      .forEach(([areaName, data]) => {
+        data.bagian.sort((a, b) => a.display_order - b.display_order);
+        sortedGrouped[areaName] = data.bagian;
+      });
+
+    return sortedGrouped;
+  } catch (error) {
+    console.error('Error fetching bagian for line:', error);
+    return {};
+  }
+};
+
+export const getLineConfiguration = async (lineNumber: string): Promise<LineConfig | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('line_configurations')
+      .select('*')
+      .eq('line_number', lineNumber)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Error fetching line configuration:', error);
+    return null;
+  }
+};
+
+export const getAllLinesByPlant = async (plant: string): Promise<string[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('line_configurations')
+      .select('line_number')
+      .eq('plant', plant)
+      .eq('is_active', true)
+      .order('line_number', { ascending: true });
+
+    if (error) throw error;
+    return data?.map(item => item.line_number) || [];
+  } catch (error) {
+    console.error('Error fetching lines by plant:', error);
+    return [];
+  }
+};
