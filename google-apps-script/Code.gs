@@ -223,17 +223,60 @@ function getSheetData(sheetName) {
   if (data.length < 2) return [];
   
   const headers = data[0];
+  // Detect which columns are date-like (tanggal, deleted_at, created_at, updated_at, etc.)
+  const DATE_COLUMNS = ['tanggal'];
   const rows = [];
   
   for (let i = 1; i < data.length; i++) {
     const row = {};
     for (let j = 0; j < headers.length; j++) {
-      row[headers[j]] = data[i][j];
+      var val = data[i][j];
+      // Normalize date columns to yyyy-MM-dd
+      if (DATE_COLUMNS.indexOf(headers[j]) !== -1 && val) {
+        val = normalizeDate(val);
+      }
+      row[headers[j]] = val;
     }
     rows.push(row);
   }
   
   return rows;
+}
+
+/**
+ * Normalize any date value to yyyy-MM-dd string.
+ * Handles: Date objects, ISO strings (2026-03-03T17:00:00.000Z), and yyyy-MM-dd strings.
+ */
+function normalizeDate(val) {
+  if (!val) return '';
+  // If it's already yyyy-MM-dd, return as-is
+  if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+    return val;
+  }
+  // If it's a Date object (Google Sheets returns Date objects for date cells)
+  if (val instanceof Date) {
+    var y = val.getFullYear();
+    var m = String(val.getMonth() + 1).padStart(2, '0');
+    var d = String(val.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + d;
+  }
+  // If it's an ISO string like "2026-03-03T17:00:00.000Z"
+  if (typeof val === 'string' && val.indexOf('T') !== -1) {
+    // Parse and use UTC date to avoid timezone shifts
+    var dt = new Date(val);
+    if (!isNaN(dt.getTime())) {
+      // Use the date portion directly from the ISO string to avoid timezone issues
+      var parts = val.split('T')[0];
+      if (/^\d{4}-\d{2}-\d{2}$/.test(parts)) {
+        return parts;
+      }
+      var y2 = dt.getUTCFullYear();
+      var m2 = String(dt.getUTCMonth() + 1).padStart(2, '0');
+      var d2 = String(dt.getUTCDate()).padStart(2, '0');
+      return y2 + '-' + m2 + '-' + d2;
+    }
+  }
+  return String(val);
 }
 
 function getSheetHeaders(sheetName) {
@@ -559,7 +602,16 @@ function handleUpdateSanitationRecord(data) {
 }
 
 function handleDeleteSanitationRecord(data) {
-  const rowNum = findRowIndex('sanitation_records', 'id', data.id);
+  var SANITATION_PHOTO_FIELDS = ['foto_sebelum', 'foto_sesudah'];
+  
+  // Get record to delete associated photos
+  var records = getSheetData('sanitation_records');
+  var record = records.find(function(r) { return String(r.id) === String(data.id); });
+  if (record) {
+    deleteRecordPhotos(record, SANITATION_PHOTO_FIELDS);
+  }
+  
+  var rowNum = findRowIndex('sanitation_records', 'id', data.id);
   if (rowNum === -1) return { success: false, error: 'Record not found' };
   
   deleteRows('sanitation_records', [rowNum]);
@@ -668,26 +720,20 @@ function handleGetKlipingRecordPhotos(params) {
 }
 
 function handleInsertKlipingRecord(data) {
-  // Check duplicate
-  if (!data.skipDuplicateCheck) {
-    const records = getSheetData('kliping_records');
-    const existing = records.find(r =>
-      r.plant === data.plant &&
-      String(r.tanggal) === String(data.tanggal) &&
-      r.line === data.line &&
-      r.regu === data.regu &&
-      r.shift === data.shift &&
-      r.id_unik === data.id_unik &&
-      r.mesin === data.mesin
-    );
-    
-    if (existing) {
-      return { success: true, id: existing.id, skipped: true };
-    }
+  // Always check for exact duplicate by id_unik + mesin (prevent double-submit)
+  var records = getSheetData('kliping_records');
+  var existing = records.find(function(r) {
+    return r.id_unik === data.id_unik &&
+           r.mesin === data.mesin &&
+           String(r.pengamatan_ke) === String(data.pengamatan_ke);
+  });
+  
+  if (existing) {
+    return { success: true, id: existing.id, skipped: true };
   }
   
-  const id = generateUUID();
-  const now = nowISO();
+  var id = generateUUID();
+  var now = nowISO();
   
   appendRow('kliping_records', {
     id: id,
@@ -737,7 +783,17 @@ function handleUpdateKlipingRecord(data) {
 }
 
 function handleDeleteKlipingRecord(data) {
-  const rowNum = findRowIndex('kliping_records', 'id', data.id);
+  var KLIPING_PHOTO_FIELDS = ['foto_etiket', 'foto_banded', 'foto_karton', 'foto_label_etiket',
+    'foto_label_bumbu', 'foto_label_minyak_bumbu', 'foto_label_si', 'foto_label_opp_banded'];
+  
+  // Get record first to delete associated photos
+  var records = getSheetData('kliping_records');
+  var record = records.find(function(r) { return String(r.id) === String(data.id); });
+  if (record) {
+    deleteRecordPhotos(record, KLIPING_PHOTO_FIELDS);
+  }
+  
+  var rowNum = findRowIndex('kliping_records', 'id', data.id);
   if (rowNum === -1) return { success: false, error: 'Record not found' };
   
   deleteRows('kliping_records', [rowNum]);
@@ -745,7 +801,17 @@ function handleDeleteKlipingRecord(data) {
 }
 
 function handleDeleteKlipingByIdUnik(data) {
-  const rows = findRowIndices('kliping_records', { id_unik: data.id_unik });
+  var KLIPING_PHOTO_FIELDS = ['foto_etiket', 'foto_banded', 'foto_karton', 'foto_label_etiket',
+    'foto_label_bumbu', 'foto_label_minyak_bumbu', 'foto_label_si', 'foto_label_opp_banded'];
+  
+  // Delete associated Drive photos first
+  var allRecords = getSheetData('kliping_records');
+  var matching = allRecords.filter(function(r) { return r.id_unik === data.id_unik; });
+  matching.forEach(function(record) {
+    deleteRecordPhotos(record, KLIPING_PHOTO_FIELDS);
+  });
+  
+  var rows = findRowIndices('kliping_records', { id_unik: data.id_unik });
   if (rows.length === 0) return { success: false, error: 'No records found' };
   
   deleteRows('kliping_records', rows);
@@ -858,7 +924,16 @@ function handleUpdateMonitoringRecord(data) {
 }
 
 function handleDeleteMonitoringRecord(data) {
-  const rowNum = findRowIndex('monitoring_records', 'id', data.id);
+  var MONITORING_PHOTO_FIELDS = ['foto_url'];
+  
+  // Get record to delete associated photo
+  var records = getSheetData('monitoring_records');
+  var record = records.find(function(r) { return String(r.id) === String(data.id); });
+  if (record) {
+    deleteRecordPhotos(record, MONITORING_PHOTO_FIELDS);
+  }
+  
+  var rowNum = findRowIndex('monitoring_records', 'id', data.id);
   if (rowNum === -1) return { success: false, error: 'Record not found' };
   
   deleteRows('monitoring_records', [rowNum]);
@@ -866,7 +941,18 @@ function handleDeleteMonitoringRecord(data) {
 }
 
 function handleDeleteMonitoringSession(data) {
-  const rows = findRowIndices('monitoring_records', {
+  var MONITORING_PHOTO_FIELDS = ['foto_url'];
+  
+  // Delete associated photos
+  var allRecords = getSheetData('monitoring_records');
+  var matching = allRecords.filter(function(r) {
+    return r.plant === data.plant && String(r.tanggal) === String(data.tanggal) && r.line === data.line;
+  });
+  matching.forEach(function(record) {
+    deleteRecordPhotos(record, MONITORING_PHOTO_FIELDS);
+  });
+  
+  var rows = findRowIndices('monitoring_records', {
     plant: data.plant,
     tanggal: data.tanggal,
     line: data.line
@@ -877,13 +963,20 @@ function handleDeleteMonitoringSession(data) {
 }
 
 function handleDeleteMultipleMonitoringRecords(data) {
-  const ids = data.ids || [];
-  const rows = [];
+  var MONITORING_PHOTO_FIELDS = ['foto_url'];
+  var ids = data.ids || [];
+  var rows = [];
   
-  for (const id of ids) {
-    const row = findRowIndex('monitoring_records', 'id', id);
+  // Delete associated photos
+  var allRecords = getSheetData('monitoring_records');
+  ids.forEach(function(id) {
+    var record = allRecords.find(function(r) { return String(r.id) === String(id); });
+    if (record) {
+      deleteRecordPhotos(record, MONITORING_PHOTO_FIELDS);
+    }
+    var row = findRowIndex('monitoring_records', 'id', id);
     if (row !== -1) rows.push(row);
-  }
+  });
   
   deleteRows('monitoring_records', rows);
   return { success: true, count: rows.length };
@@ -1066,6 +1159,49 @@ function handleGetAuditLogs(params) {
 
 // ===== PHOTO UPLOAD HANDLER =====
 
+/**
+ * Extract Google Drive file ID from various URL formats
+ */
+function extractDriveFileId(url) {
+  if (!url || typeof url !== 'string') return null;
+  // Format: https://drive.google.com/uc?export=view&id=FILE_ID
+  var match1 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (match1) return match1[1];
+  // Format: https://drive.google.com/file/d/FILE_ID/view
+  var match2 = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (match2) return match2[1];
+  // If it's a plain file ID (long alphanumeric string)
+  if (url.length > 20 && !/[\/\:\.?&]/.test(url)) return url;
+  return null;
+}
+
+/**
+ * Delete a file from Google Drive by URL or file ID. Silently fails if file not found.
+ */
+function deleteDriveFile(urlOrId) {
+  var fileId = extractDriveFileId(urlOrId);
+  if (!fileId) return;
+  try {
+    DriveApp.getFileById(fileId).setTrashed(true);
+  } catch (e) {
+    // File may already be deleted or not accessible - silently ignore
+    Logger.log('Could not delete Drive file ' + fileId + ': ' + e.toString());
+  }
+}
+
+/**
+ * Delete all photo files associated with a record from Google Drive
+ */
+function deleteRecordPhotos(record, photoFields) {
+  if (!record) return;
+  for (var i = 0; i < photoFields.length; i++) {
+    var url = record[photoFields[i]];
+    if (url && typeof url === 'string' && url.indexOf('drive.google.com') !== -1) {
+      deleteDriveFile(url);
+    }
+  }
+}
+
 function handleUploadPhoto(data) {
   try {
     // data.photo = base64 string (without data:image prefix)
@@ -1098,9 +1234,9 @@ function handleUploadPhoto(data) {
     // Make file accessible via link
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     
-    const fileId = file.getId();
-    const viewUrl = 'https://drive.google.com/file/d/' + fileId + '/view';
-    const directUrl = 'https://drive.google.com/uc?export=view&id=' + fileId;
+    var fileId = file.getId();
+    var viewUrl = 'https://drive.google.com/file/d/' + fileId + '/view';
+    var directUrl = 'https://lh3.googleusercontent.com/d/' + fileId;
     
     return {
       success: true,
@@ -1210,15 +1346,31 @@ function handleGenericUpdate(postData) {
 
 function handleGenericDelete(postData) {
   try {
-    const table = postData.table;
+    var table = postData.table;
     if (!table || ALLOWED_TABLES.indexOf(table) === -1) {
       return { error: 'Invalid or missing table: ' + table };
     }
     
-    const id = postData.id;
+    var id = postData.id;
     if (!id) return { error: 'Missing id' };
     
-    const rowIndex = findRowIndex(table, 'id', id);
+    // Delete associated Drive photos if applicable
+    var PHOTO_FIELDS_MAP = {
+      'kliping_records': ['foto_etiket', 'foto_banded', 'foto_karton', 'foto_label_etiket',
+        'foto_label_bumbu', 'foto_label_minyak_bumbu', 'foto_label_si', 'foto_label_opp_banded'],
+      'sanitation_records': ['foto_sebelum', 'foto_sesudah'],
+      'monitoring_records': ['foto_url']
+    };
+    
+    if (PHOTO_FIELDS_MAP[table]) {
+      var allRecords = getSheetData(table);
+      var record = allRecords.find(function(r) { return String(r.id) === String(id); });
+      if (record) {
+        deleteRecordPhotos(record, PHOTO_FIELDS_MAP[table]);
+      }
+    }
+    
+    var rowIndex = findRowIndex(table, 'id', id);
     if (rowIndex === -1) return { error: 'Record not found with id: ' + id };
     
     deleteRows(table, [rowIndex]);

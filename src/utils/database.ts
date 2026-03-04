@@ -1,5 +1,5 @@
 import { SanitationRecord } from '../types/database';
-import { gGet, gPost, uploadPhotoFromDataUrl, getDriveDirectUrl } from './googleApi';
+import { gGet, gPost, uploadPhotoFromDataUrl, getDriveDirectUrl, normalizeDate } from './googleApi';
 import { logDelete } from './auditLog';
 
 const DEBUG = true;
@@ -45,7 +45,7 @@ class DatabaseManager {
       foto_sesudah: getDriveDirectUrl(record.foto_sesudah),
       foto_sesudah_timestamp: record.foto_sesudah_timestamp,
       keterangan: record.keterangan,
-      tanggal: record.tanggal,
+      tanggal: normalizeDate(record.tanggal),
       createdAt: record.created_at,
       created_at: record.created_at,
       created_by: record.created_by,

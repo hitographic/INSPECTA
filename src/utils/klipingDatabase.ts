@@ -1,4 +1,4 @@
-import { gGet, gPost, uploadPhotoFromDataUrl, getDriveDirectUrl } from './googleApi';
+import { gGet, gPost, uploadPhotoFromDataUrl, getDriveDirectUrl, normalizeDate, normalizeDatesInRecords } from './googleApi';
 import { logDelete } from './auditLog';
 import { KlipingRecord } from '../types/database';
 
@@ -101,7 +101,7 @@ export const getKlipingRecords = async (filters?: {
 
     const data = await gGet('getKlipingRecords', params);
     console.log('[KLIPING] Fetched records:', data?.length || 0);
-    return data || [];
+    return normalizeDatesInRecords(data || []);
   } catch (error) {
     console.error('[KLIPING] Exception in getKlipingRecords:', error);
     return [];
@@ -112,6 +112,8 @@ export const getKlipingRecordById = async (id: string): Promise<KlipingRecord | 
   try {
     const data = await gGet('getKlipingRecordById', { id });
     if (!data) return null;
+    // Normalize date
+    if (data.tanggal) data.tanggal = normalizeDate(data.tanggal);
     // Convert Drive URLs to direct URLs for display
     const photoFields = ['foto_etiket', 'foto_banded', 'foto_karton', 'foto_label_etiket',
       'foto_label_bumbu', 'foto_label_minyak_bumbu', 'foto_label_si', 'foto_label_opp_banded'];
@@ -133,7 +135,7 @@ export const getKlipingRecordPhotos = async (filters: {
     console.log('[KLIPING] Fetching photos with filters:', filters);
     const params: Record<string, string> = {
       plant: filters.plant,
-      tanggal: filters.tanggal,
+      tanggal: normalizeDate(filters.tanggal),
       line: filters.line,
       regu: filters.regu,
       shift: filters.shift,
@@ -173,12 +175,12 @@ export const getKlipingRecordsWithPhotos = async (filters?: {
     // Convert Drive URLs for photos
     const photoFields = ['foto_etiket', 'foto_banded', 'foto_karton', 'foto_label_etiket',
       'foto_label_bumbu', 'foto_label_minyak_bumbu', 'foto_label_si', 'foto_label_opp_banded'];
-    return (data || []).map((r: any) => {
+    return normalizeDatesInRecords((data || []).map((r: any) => {
       for (const f of photoFields) {
         if (r[f]) r[f] = getDriveDirectUrl(r[f]);
       }
       return r;
-    });
+    }));
   } catch (error) {
     console.error('[KLIPING] Error in getKlipingRecordsWithPhotos:', error);
     return [];

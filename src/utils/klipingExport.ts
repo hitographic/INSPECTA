@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import { KlipingRecord } from '../types/database';
-import { gGet } from './googleApi';
+import { gGet, getDriveDirectUrl, isDriveUrl } from './googleApi';
 import { requestQueue } from './requestQueue';
 
 const fetchRecordPhotos = async (recordId: string): Promise<any> => {
@@ -10,21 +10,47 @@ const fetchRecordPhotos = async (recordId: string): Promise<any> => {
       const records = await gGet('get', { table: 'kliping_records', id: recordId });
       const record = Array.isArray(records) ? records[0] : records;
       if (!record) return {};
+      // Return the photo fields with Drive URLs
       return {
-        Foto_Etiket: record.Foto_Etiket || record.foto_etiket,
-        Foto_Mesin_1: record.Foto_Mesin_1 || record.foto_mesin_1,
-        Foto_Mesin_2: record.Foto_Mesin_2 || record.foto_mesin_2,
-        Foto_Mesin_3: record.Foto_Mesin_3 || record.foto_mesin_3,
-        Foto_Mesin_4: record.Foto_Mesin_4 || record.foto_mesin_4,
-        Foto_Mesin_5: record.Foto_Mesin_5 || record.foto_mesin_5,
-        Foto_Mesin_6: record.Foto_Mesin_6 || record.foto_mesin_6,
-        Foto_Mesin_7: record.Foto_Mesin_7 || record.foto_mesin_7,
+        foto_etiket: record.foto_etiket || '',
+        foto_banded: record.foto_banded || '',
+        foto_karton: record.foto_karton || '',
+        foto_label_etiket: record.foto_label_etiket || '',
+        foto_label_bumbu: record.foto_label_bumbu || '',
+        foto_label_minyak_bumbu: record.foto_label_minyak_bumbu || '',
+        foto_label_si: record.foto_label_si || '',
+        foto_label_opp_banded: record.foto_label_opp_banded || '',
       };
     });
     return result || {};
   } catch (error) {
     console.error(`[EXPORT] Exception fetching photos for record ${recordId}:`, error);
     return {};
+  }
+};
+
+/**
+ * Fetch an image from a URL and convert to base64 data URL.
+ * Works with Google Drive lh3 URLs and other image URLs.
+ */
+const fetchImageAsBase64 = async (url: string): Promise<string | null> => {
+  if (!url || typeof url !== 'string' || url.trim() === '') return null;
+  // If already base64, return as-is
+  if (url.startsWith('data:image')) return url;
+  
+  try {
+    const response = await fetch(url, { mode: 'cors' });
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    console.error('[EXPORT] Error fetching image from URL:', url, error);
+    return null;
   }
 };
 
@@ -137,6 +163,7 @@ const hashBase64 = (str: string): string => {
 };
 
 // Batch process images for better performance
+// Handles both base64 data URLs and Google Drive URLs
 const processImagesInBatch = async (
   records: KlipingRecord[],
   fotoKey: string
@@ -148,21 +175,32 @@ const processImagesInBatch = async (
     const batch = records.slice(i, i + BATCH_SIZE);
     const promises = batch.map(async (record, batchIdx) => {
       const idx = i + batchIdx;
-      const fotoBase64 = (record as any)[fotoKey];
-      if (fotoBase64) {
-        try {
-          const cacheKey = `${hashBase64(fotoBase64)}_${fotoKey}`;
-          if (imageResizeCache.has(cacheKey)) {
-            imageMap.set(idx, imageResizeCache.get(cacheKey)!);
-          } else {
-            const compressed = await resizeAndCompressImage(fotoBase64, 500, 500, 0.90);
-            const imageBuffer = base64ToBuffer(compressed);
-            addToCache(cacheKey, imageBuffer);
-            imageMap.set(idx, imageBuffer);
-          }
-        } catch (error) {
-          console.error(`Error processing image for ${fotoKey}:`, error);
+      let fotoData = (record as any)[fotoKey];
+      if (!fotoData || typeof fotoData !== 'string' || fotoData.trim() === '') return;
+      
+      try {
+        // If it's a Drive URL, fetch and convert to base64 first
+        if (isDriveUrl(fotoData) || fotoData.startsWith('https://')) {
+          const driveUrl = getDriveDirectUrl(fotoData);
+          const base64Result = await fetchImageAsBase64(driveUrl);
+          if (!base64Result) return;
+          fotoData = base64Result;
         }
+        
+        // Now fotoData should be base64
+        if (!fotoData.startsWith('data:image')) return;
+        
+        const cacheKey = `${hashBase64(fotoData)}_${fotoKey}`;
+        if (imageResizeCache.has(cacheKey)) {
+          imageMap.set(idx, imageResizeCache.get(cacheKey)!);
+        } else {
+          const compressed = await resizeAndCompressImage(fotoData, 500, 500, 0.90);
+          const imageBuffer = base64ToBuffer(compressed);
+          addToCache(cacheKey, imageBuffer);
+          imageMap.set(idx, imageBuffer);
+        }
+      } catch (error) {
+        console.error(`Error processing image for ${fotoKey}:`, error);
       }
     });
     await Promise.all(promises);
@@ -827,9 +865,17 @@ export const exportKlipingToPDF = async (records: KlipingRecord[]): Promise<bool
       xPosition = margin + labelColumnWidth;
 
       const imagePromises = recordsWithPhotos.map(async (record) => {
-        const fotoBase64 = (record as any)[fotoType.key];
-        if (fotoBase64) {
-          return await resizeAndCompressImage(fotoBase64, 400, 400);
+        let fotoData = (record as any)[fotoType.key];
+        if (!fotoData || typeof fotoData !== 'string' || fotoData.trim() === '') return null;
+        // If it's a Drive URL, fetch and convert to base64 first
+        if (isDriveUrl(fotoData) || (fotoData.startsWith('https://') && !fotoData.startsWith('data:'))) {
+          const driveUrl = getDriveDirectUrl(fotoData);
+          const base64Result = await fetchImageAsBase64(driveUrl);
+          if (!base64Result) return null;
+          fotoData = base64Result;
+        }
+        if (fotoData && fotoData.startsWith('data:image')) {
+          return await resizeAndCompressImage(fotoData, 400, 400);
         }
         return null;
       });
@@ -1219,9 +1265,16 @@ const generatePDFBlob = async (records: KlipingRecord[]): Promise<Blob> => {
     xPosition = margin + labelColumnWidth;
 
     const imagePromises2 = recordsWithPhotos.map(async (record) => {
-      const fotoBase64 = (record as any)[fotoType.key];
-      if (fotoBase64) {
-        return await resizeAndCompressImage(fotoBase64, 400, 400);
+      let fotoData = (record as any)[fotoType.key];
+      if (!fotoData || typeof fotoData !== 'string' || fotoData.trim() === '') return null;
+      if (isDriveUrl(fotoData) || (fotoData.startsWith('https://') && !fotoData.startsWith('data:'))) {
+        const driveUrl = getDriveDirectUrl(fotoData);
+        const base64Result = await fetchImageAsBase64(driveUrl);
+        if (!base64Result) return null;
+        fotoData = base64Result;
+      }
+      if (fotoData && fotoData.startsWith('data:image')) {
+        return await resizeAndCompressImage(fotoData, 400, 400);
       }
       return null;
     });

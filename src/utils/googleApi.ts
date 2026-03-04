@@ -31,7 +31,7 @@ export async function gGet(action: string, params: Record<string, string> = {}):
   }
 
   const data = await response.json();
-  if (data.error) {
+  if (data && data.error) {
     throw new Error(data.error);
   }
 
@@ -58,7 +58,7 @@ export async function gPost(action: string, body: Record<string, any> = {}): Pro
   }
 
   const data = await response.json();
-  if (data.error) {
+  if (data && data.error) {
     throw new Error(data.error);
   }
 
@@ -112,27 +112,40 @@ export async function uploadPhotoFromDataUrl(
 }
 
 /**
- * Get a direct view URL for a Google Drive file
+ * Get a direct view URL for a Google Drive file.
+ * Uses lh3.googleusercontent.com format for more reliable embedding.
  */
 export function getDriveDirectUrl(fileIdOrUrl: string): string {
   if (!fileIdOrUrl) return '';
 
-  // If it's already a direct URL
-  if (fileIdOrUrl.includes('drive.google.com/uc?')) {
+  // If it's already a direct URL or thumbnail URL, return as-is
+  if (fileIdOrUrl.includes('lh3.googleusercontent.com')) {
     return fileIdOrUrl;
   }
 
   // Extract file ID from various URL formats
   let fileId = fileIdOrUrl;
 
-  const match = fileIdOrUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
-  if (match) {
-    fileId = match[1];
+  // Format: https://drive.google.com/uc?export=view&id=FILE_ID
+  const matchUc = fileIdOrUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (matchUc) {
+    fileId = matchUc[1];
+  } else {
+    // Format: https://drive.google.com/file/d/FILE_ID/view
+    const matchD = fileIdOrUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    if (matchD) {
+      fileId = matchD[1];
+    }
   }
 
-  // If it's already a plain file ID
-  if (fileId.length > 20 && !fileId.includes('/') && !fileId.includes(':')) {
-    return `https://drive.google.com/uc?export=view&id=${fileId}`;
+  // If it's a plain file ID (long alphanumeric string), build the URL
+  if (fileId.length > 20 && !fileId.includes('/') && !fileId.includes(':') && !fileId.includes('.')) {
+    return `https://lh3.googleusercontent.com/d/${fileId}`;
+  }
+
+  // If it already looks like a full URL but we couldn't extract, return as-is
+  if (fileIdOrUrl.includes('drive.google.com')) {
+    return fileIdOrUrl;
   }
 
   return fileIdOrUrl;
@@ -144,4 +157,41 @@ export function getDriveDirectUrl(fileIdOrUrl: string): string {
 export function isDriveUrl(url: string): boolean {
   if (!url) return false;
   return url.includes('drive.google.com') || url.includes('googleusercontent.com');
+}
+
+/**
+ * Normalize a date value to yyyy-MM-dd format.
+ * Handles ISO strings (2026-03-03T17:00:00.000Z), Date objects, and plain yyyy-MM-dd strings.
+ */
+export function normalizeDate(val: any): string {
+  if (!val) return '';
+  const s = String(val);
+  // Already yyyy-MM-dd
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // ISO string like 2026-03-03T17:00:00.000Z — extract the date part directly
+  if (s.includes('T')) {
+    const parts = s.split('T')[0];
+    if (/^\d{4}-\d{2}-\d{2}$/.test(parts)) return parts;
+  }
+  // Try parsing as date
+  const dt = new Date(s);
+  if (!isNaN(dt.getTime())) {
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, '0');
+    const d = String(dt.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return s;
+}
+
+/**
+ * Normalize all 'tanggal' fields in an array of records
+ */
+export function normalizeDatesInRecords<T extends Record<string, any>>(records: T[]): T[] {
+  return records.map(r => {
+    if (r.tanggal) {
+      return { ...r, tanggal: normalizeDate(r.tanggal) };
+    }
+    return r;
+  });
 }

@@ -651,10 +651,13 @@ const CreateKlipingScreen: React.FC = () => {
   };
 
   const handleSimpanSemua = async () => {
+    if (saving) return; // Prevent double submission
     if (savedPengamatans.length === 0) {
       alert('Belum ada pengamatan yang disimpan!');
       return;
     }
+
+    setSaving(true);
 
     if (!state?.sessionId) {
       const existingRecords = await getKlipingRecords({
@@ -671,8 +674,6 @@ const CreateKlipingScreen: React.FC = () => {
         return;
       }
     }
-
-    setSaving(true);
     try {
       const lineNumber = line.replace('Line ', '');
       const dateObj = new Date(tanggal);

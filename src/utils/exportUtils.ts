@@ -2,7 +2,7 @@ import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import { SanitationRecord } from '../types/database';
 import { getRecordById } from './database';
-import { gGet } from './googleApi';
+import { gGet, getDriveDirectUrl, isDriveUrl } from './googleApi';
 import { getAreas, getBagianByAreaName } from './masterData';
 
 // Convert base64 image to buffer for ExcelJS
@@ -113,9 +113,24 @@ const hashBase64 = (str: string): string => {
   return hash.toString(36);
 };
 
-const resizeImage = (base64: string, targetWidth: number = 300, targetHeight: number = 300): Promise<string> => {
-  return new Promise((resolve) => {
-    const cacheKey = `${hashBase64(base64)}_${targetWidth}_${targetHeight}`;
+/**
+ * Fetch an image URL as an object URL for cross-origin loading
+ */
+const fetchImageAsObjectUrl = async (url: string): Promise<string | null> => {
+  try {
+    const directUrl = isDriveUrl(url) ? getDriveDirectUrl(url) : url;
+    const response = await fetch(directUrl, { mode: 'cors' });
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  } catch {
+    return null;
+  }
+};
+
+const resizeImage = (imageUrlOrBase64: string, targetWidth: number = 300, targetHeight: number = 300): Promise<string> => {
+  return new Promise(async (resolve) => {
+    const cacheKey = `${hashBase64(imageUrlOrBase64)}_${targetWidth}_${targetHeight}`;
 
     if (imageCache.has(cacheKey)) {
       resolve(imageCache.get(cacheKey)!);
@@ -123,12 +138,14 @@ const resizeImage = (base64: string, targetWidth: number = 300, targetHeight: nu
     }
 
     const img = new Image();
+    img.crossOrigin = 'anonymous';
+    
     img.onload = () => {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
 
       if (!ctx) {
-        resolve(base64);
+        resolve(imageUrlOrBase64);
         return;
       }
 
@@ -143,8 +160,24 @@ const resizeImage = (base64: string, targetWidth: number = 300, targetHeight: nu
       imageCache.set(cacheKey, resized);
       resolve(resized);
     };
-    img.onerror = () => resolve(base64);
-    img.src = base64;
+    img.onerror = () => resolve(imageUrlOrBase64);
+    
+    // For Drive URLs, fetch as blob first to avoid CORS issues
+    if (isDriveUrl(imageUrlOrBase64) || (imageUrlOrBase64.startsWith('https://') && !imageUrlOrBase64.startsWith('data:'))) {
+      const objectUrl = await fetchImageAsObjectUrl(imageUrlOrBase64);
+      if (objectUrl) {
+        const origOnload = img.onload;
+        img.onload = function(e) {
+          URL.revokeObjectURL(objectUrl);
+          if (origOnload) (origOnload as any).call(this, e);
+        };
+        img.src = objectUrl;
+      } else {
+        img.src = getDriveDirectUrl(imageUrlOrBase64);
+      }
+    } else {
+      img.src = imageUrlOrBase64;
+    }
   });
 };
 

@@ -1,4 +1,4 @@
-import { gGet, gPost, uploadPhotoFromDataUrl, getDriveDirectUrl } from './googleApi';
+import { gGet, gPost, uploadPhotoFromDataUrl, getDriveDirectUrl, normalizeDatesInRecords } from './googleApi';
 import { logDelete } from './auditLog';
 
 export interface MonitoringRecord {
@@ -32,7 +32,7 @@ export const getMonitoringRecords = async (
     if (filters?.lines && filters.lines.length > 0) params.lines = filters.lines.join(',');
 
     const data = await gGet('getMonitoringRecords', params);
-    return (data || []).map((r: any) => ({ ...r, foto_url: null }));
+    return normalizeDatesInRecords((data || []).map((r: any) => ({ ...r, foto_url: null })));
   } catch (error) {
     console.error('Error fetching monitoring records:', error);
     throw error;
@@ -44,10 +44,10 @@ export const getMonitoringRecordsWithPhotos = async (
 ): Promise<MonitoringRecord[]> => {
   try {
     const data = await gGet('getMonitoringRecordsWithPhotos', { plant, tanggal, line });
-    return (data || []).map((r: any) => ({
+    return normalizeDatesInRecords((data || []).map((r: any) => ({
       ...r,
       foto_url: r.foto_url ? getDriveDirectUrl(r.foto_url) : null
-    }));
+    })));
   } catch (error) {
     console.error('Error fetching monitoring records with photos:', error);
     throw error;
