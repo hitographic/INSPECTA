@@ -1,25 +1,27 @@
 import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import { KlipingRecord } from '../types/database';
-import supabase from './supabase';
+import { gGet } from './googleApi';
 import { requestQueue } from './requestQueue';
 
 const fetchRecordPhotos = async (recordId: string): Promise<any> => {
   try {
     const result = await requestQueue.add(async () => {
-      return await supabase
-        .from('kliping_records')
-        .select('Foto_Etiket, Foto_Mesin_1, Foto_Mesin_2, Foto_Mesin_3, Foto_Mesin_4, Foto_Mesin_5, Foto_Mesin_6, Foto_Mesin_7')
-        .eq('id', recordId)
-        .maybeSingle();
+      const records = await gGet('get', { table: 'kliping_records', id: recordId });
+      const record = Array.isArray(records) ? records[0] : records;
+      if (!record) return {};
+      return {
+        Foto_Etiket: record.Foto_Etiket || record.foto_etiket,
+        Foto_Mesin_1: record.Foto_Mesin_1 || record.foto_mesin_1,
+        Foto_Mesin_2: record.Foto_Mesin_2 || record.foto_mesin_2,
+        Foto_Mesin_3: record.Foto_Mesin_3 || record.foto_mesin_3,
+        Foto_Mesin_4: record.Foto_Mesin_4 || record.foto_mesin_4,
+        Foto_Mesin_5: record.Foto_Mesin_5 || record.foto_mesin_5,
+        Foto_Mesin_6: record.Foto_Mesin_6 || record.foto_mesin_6,
+        Foto_Mesin_7: record.Foto_Mesin_7 || record.foto_mesin_7,
+      };
     });
-
-    if (result.error) {
-      console.error(`[EXPORT] Error fetching photos for record ${recordId}:`, result.error);
-      return {};
-    }
-
-    return result.data || {};
+    return result || {};
   } catch (error) {
     console.error(`[EXPORT] Exception fetching photos for record ${recordId}:`, error);
     return {};

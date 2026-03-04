@@ -2,7 +2,7 @@ import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import { SanitationRecord } from '../types/database';
 import { getRecordById } from './database';
-import supabase from './supabase';
+import { gGet } from './googleApi';
 import { getAreas, getBagianByAreaName } from './masterData';
 
 // Convert base64 image to buffer for ExcelJS
@@ -61,18 +61,10 @@ const formatIndonesianDate = (dateString: string): string => {
 // Get supervisor name for plant
 const getSupervisorName = async (plant: string): Promise<string> => {
   try {
-    const { data, error } = await supabase
-      .from('supervisors')
-      .select('supervisor_name')
-      .eq('plant', plant)
-      .single();
-
-    if (error) {
-      console.error('Error fetching supervisor:', error);
-      return 'Unknown';
-    }
-
-    return data?.supervisor_name || 'Unknown';
+    const supervisors = await gGet('get', { table: 'supervisors' });
+    const arr = Array.isArray(supervisors) ? supervisors : [];
+    const found = arr.find((s: any) => s.plant === plant);
+    return found?.supervisor_name || 'Unknown';
   } catch (error) {
     console.error('Error in getSupervisorName:', error);
     return 'Unknown';

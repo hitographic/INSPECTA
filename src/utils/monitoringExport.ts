@@ -3,7 +3,7 @@ import jsPDF from 'jspdf';
 import { MonitoringRecord } from './monitoringDatabase';
 import { cropImageToSquare, cropImageToSquareForExcel } from './imageUtils';
 import { sortAreasByDisplayOrder } from './masterData';
-import supabase from './supabase';
+import { gGet } from './googleApi';
 
 // Helper function to get user's full name from username (NIK)
 // Export this function so it can be used in other components
@@ -16,19 +16,12 @@ export const getUserFullName = async (createdBy: string): Promise<string> => {
   // If it's purely numeric (NIK), lookup from database
   if (/^\d+$/.test(createdBy)) {
     try {
-      const { data, error } = await supabase
-        .from('app_users')
-        .select('full_name')
-        .eq('username', createdBy)
-        .maybeSingle();
+      const users = await gGet('get', { table: 'app_users' });
+      const arr = Array.isArray(users) ? users : [];
+      const found = arr.find((u: any) => u.username === createdBy);
 
-      if (error) {
-        console.error('Error fetching user name:', error);
-        return createdBy;
-      }
-
-      if (data && data.full_name) {
-        return data.full_name;
+      if (found && found.full_name) {
+        return found.full_name;
       }
     } catch (error) {
       console.error('Error fetching user name:', error);

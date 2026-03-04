@@ -4,7 +4,7 @@ import { ArrowLeft, Plus, FileDown, Trash2, Eye, X } from 'lucide-react';
 import { KlipingRecord } from '../types/database';
 import { getKlipingRecords, getKlipingRecordsWithPhotos, getKlipingRecordPhotos, countKlipingPhotos, REGU_OPTIONS, SHIFT_OPTIONS, FOTO_TYPES } from '../utils/klipingDatabase';
 import { exportKlipingToExcel, exportKlipingToPDF, exportAllKlipingSequential } from '../utils/klipingExport';
-import supabase from '../utils/supabase';
+import { gGet, gPost } from '../utils/googleApi';
 import { PLANTS } from '../constants/AppConstants';
 import { getUserPermissions } from '../utils/authService';
 import { requestQueue } from '../utils/requestQueue';
@@ -461,33 +461,23 @@ const KlipingRecordsScreen: React.FC = () => {
     }
 
     try {
-      let query = supabase.from('kliping_records').delete();
+      // Get all kliping records, then filter and delete matching ones
+      const allRecords = await gGet('get', { table: 'kliping_records' });
+      const records = Array.isArray(allRecords) ? allRecords : [];
 
-      query = query.eq('plant', plant);
+      const toDelete = records.filter((r: any) => {
+        if (r.plant !== plant) return false;
+        if (startDate && r.tanggal < startDate) return false;
+        if (endDate && r.tanggal > endDate) return false;
+        if (selectedLines.length > 0 && !selectedLines.includes(r.line)) return false;
+        if (selectedRegus.length > 0 && !selectedRegus.includes(r.regu)) return false;
+        if (selectedShifts.length > 0 && !selectedShifts.includes(r.shift)) return false;
+        return true;
+      });
 
-      if (startDate) {
-        query = query.gte('tanggal', startDate);
+      for (const record of toDelete) {
+        await gPost('delete', { table: 'kliping_records', id: record.id });
       }
-
-      if (endDate) {
-        query = query.lte('tanggal', endDate);
-      }
-
-      if (selectedLines.length > 0) {
-        query = query.in('line', selectedLines);
-      }
-
-      if (selectedRegus.length > 0) {
-        query = query.in('regu', selectedRegus);
-      }
-
-      if (selectedShifts.length > 0) {
-        query = query.in('shift', selectedShifts);
-      }
-
-      const { error } = await query;
-
-      if (error) throw error;
 
       alert('Data berhasil dihapus');
       await loadRecords();
@@ -1165,22 +1155,23 @@ const KlipingRecordsScreen: React.FC = () => {
                           onClick={async () => {
                             if (confirm(`Hapus semua pengamatan untuk ${firstRecord.line} - Regu ${firstRecord.regu} - Shift ${firstRecord.shift}?`)) {
                               try {
-                                const { error } = await supabase
-                                  .from('kliping_records')
-                                  .delete()
-                                  .eq('plant', plant)
-                                  .eq('tanggal', firstRecord.tanggal)
-                                  .eq('line', firstRecord.line)
-                                  .eq('regu', firstRecord.regu)
-                                  .eq('shift', firstRecord.shift);
+                                // Get all records matching this session, then delete them
+                                const allRecords = await gGet('get', { table: 'kliping_records' });
+                                const records = Array.isArray(allRecords) ? allRecords : [];
+                                const toDelete = records.filter((r: any) =>
+                                  r.plant === plant &&
+                                  r.tanggal === firstRecord.tanggal &&
+                                  r.line === firstRecord.line &&
+                                  r.regu === firstRecord.regu &&
+                                  r.shift === firstRecord.shift
+                                );
 
-                                if (error) {
-                                  console.error('Error deleting session:', error);
-                                  alert('Gagal menghapus data');
-                                } else {
-                                  alert('Data berhasil dihapus');
-                                  await loadRecords();
+                                for (const record of toDelete) {
+                                  await gPost('delete', { table: 'kliping_records', id: record.id });
                                 }
+
+                                alert('Data berhasil dihapus');
+                                await loadRecords();
                               } catch (error) {
                                 console.error('Error in delete operation:', error);
                                 alert('Gagal menghapus data');

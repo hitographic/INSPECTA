@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, Edit, Trash2, Save, X, Search, Filter } from 'lucide-react';
-import supabase from '../utils/supabase';
+import { gGet, gPost } from '../utils/googleApi';
 import { authService } from '../utils/authService';
 
 interface Area {
@@ -78,13 +78,10 @@ export default function MasterDataManagement() {
 
   const loadAreas = async () => {
     try {
-      const { data, error } = await supabase
-        .from('sanitation_areas')
-        .select('*')
-        .order('display_order', { ascending: true });
-
-      if (error) throw error;
-      setAreas(data || []);
+      const data = await gGet('get', { table: 'sanitation_areas' });
+      const arr = Array.isArray(data) ? data : [];
+      arr.sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0));
+      setAreas(arr);
     } catch (error) {
       console.error('Error loading areas:', error);
     }
@@ -96,20 +93,16 @@ export default function MasterDataManagement() {
       if (activeTab === 'areas') {
         await loadAreas();
       } else if (activeTab === 'bagian') {
-        const { data: bagianData, error } = await supabase
-          .from('sanitation_bagian')
-          .select('*')
-          .order('display_order', { ascending: true });
+        const bagianData = await gGet('get', { table: 'sanitation_bagian' });
+        const bagianArr = Array.isArray(bagianData) ? bagianData : [];
+        bagianArr.sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0));
 
-        if (error) throw error;
+        const areasData = await gGet('get', { table: 'sanitation_areas' });
+        const areasArr = Array.isArray(areasData) ? areasData : [];
 
-        const { data: areasData } = await supabase
-          .from('sanitation_areas')
-          .select('*');
+        const areasMap = new Map(areasArr.map((a: any) => [a.id, a.name]));
 
-        const areasMap = new Map(areasData?.map(a => [a.id, a.name]) || []);
-
-        const formatted = bagianData?.map(item => {
+        const formatted = bagianArr.map((item: any) => {
           let lineNumbers = item.line_numbers || [];
 
           // Parse if line_numbers is a string
@@ -131,18 +124,15 @@ export default function MasterDataManagement() {
             line_numbers: lineNumbers,
             area_name: areasMap.get(item.area_id) || 'Unknown'
           };
-        }) || [];
+        });
 
         setBagianList(formatted);
-        setAreas(areasData || []);
+        setAreas(areasArr);
       } else if (activeTab === 'supervisors') {
-        const { data: supervisorsData, error } = await supabase
-          .from('supervisors')
-          .select('*')
-          .order('plant', { ascending: true });
-
-        if (error) throw error;
-        setSupervisors(supervisorsData || []);
+        const supervisorsData = await gGet('get', { table: 'supervisors' });
+        const supervisorsArr = Array.isArray(supervisorsData) ? supervisorsData : [];
+        supervisorsArr.sort((a: any, b: any) => (a.plant || '').localeCompare(b.plant || ''));
+        setSupervisors(supervisorsArr);
       }
     } catch (error) {
       console.error('Error loading data:', error);
@@ -210,12 +200,7 @@ export default function MasterDataManagement() {
         delete updateData.created_at;
         delete updateData.updated_at;
 
-        const { error } = await supabase
-          .from(tableName)
-          .update(updateData)
-          .eq('id', editingId);
-
-        if (error) throw error;
+        await gPost('update', { table: tableName, id: editingId, data: updateData });
         setEditingId(null);
       } else {
         const insertData = { ...formData };
@@ -224,11 +209,7 @@ export default function MasterDataManagement() {
         delete insertData.created_at;
         delete insertData.updated_at;
 
-        const { error } = await supabase
-          .from(tableName)
-          .insert([insertData]);
-
-        if (error) throw error;
+        await gPost('insert', { table: tableName, data: insertData });
       }
 
       setShowAddForm(false);
@@ -249,12 +230,7 @@ export default function MasterDataManagement() {
       if (activeTab === 'bagian') tableName = 'sanitation_bagian';
       if (activeTab === 'supervisors') tableName = 'supervisors';
 
-      const { error } = await supabase
-        .from(tableName)
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
+      await gPost('delete', { table: tableName, id });
       await loadData();
       alert('Data berhasil dihapus');
     } catch (error: any) {

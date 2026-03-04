@@ -76,8 +76,7 @@ try {
           <ul style="font-size: 14px;">
             <li>Base URL: ${import.meta.env.BASE_URL || '/'}</li>
             <li>Mode: ${import.meta.env.MODE || 'unknown'}</li>
-            <li>Supabase URL: ${import.meta.env.VITE_SUPABASE_URL ? 'Set' : 'Not Set'}</li>
-            <li>Supabase Key: ${import.meta.env.VITE_SUPABASE_ANON_KEY ? 'Set' : 'Not Set'}</li>
+            <li>Google Apps Script: ${import.meta.env.VITE_GOOGLE_APPS_SCRIPT_URL ? 'Set' : 'Not Set'}</li>
           </ul>
         </div>
       </div>

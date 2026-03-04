@@ -1,107 +1,39 @@
-import supabase from './supabase';
+import { gGet, gPost, uploadPhotoFromDataUrl, getDriveDirectUrl } from './googleApi';
 import { logDelete } from './auditLog';
 import { KlipingRecord } from '../types/database';
-import { requestQueue } from './requestQueue';
-
-type DbResult<T> = { success: true; data: T } | { success: false; error: any };
-
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-const isTransientNetworkError = (err: any): boolean => {
-  const msg = String(err?.message || err || '');
-  const details = String(err?.details || '');
-
-  // Browser & Node undici often throw/return this for temporary network/payload failures
-  if (msg.includes('fetch failed') || details.includes('fetch failed')) return true;
-  if (msg.toLowerCase().includes('network')) return true;
-  if (msg.includes('Failed to fetch')) return true;
-
-  // PostgREST/Supabase transient-ish HTTP codes
-  const status = err?.status || err?.statusCode;
-  if (status === 408 || status === 409 || status === 425 || status === 429) return true;
-  if (status >= 500) return true;
-
-  return false;
-};
-
-const runWithRetry = async <T>(fn: () => Promise<DbResult<T>>, opts?: { retries?: number; baseDelayMs?: number; label?: string }): Promise<DbResult<T>> => {
-  const retries = opts?.retries ?? 3;
-  const baseDelayMs = opts?.baseDelayMs ?? 300;
-  const label = opts?.label ?? 'db-op';
-
-  let attempt = 0;
-  while (true) {
-    const result = await fn();
-    if (result.success) return result;
-
-    attempt++;
-    const transient = isTransientNetworkError(result.error);
-    if (!transient || attempt > retries) {
-      console.error(`[KLIPING] ${label} failed (attempt ${attempt}/${retries + 1})`, result.error);
-      return result;
-    }
-
-    const delay = baseDelayMs * Math.pow(2, attempt - 1);
-    console.warn(`[KLIPING] ${label} transient failure, retrying in ${delay}ms (attempt ${attempt}/${retries + 1})`);
-    await sleep(delay);
-  }
-};
 
 export const insertKlipingRecord = async (
   record: KlipingRecord,
   skipDuplicateCheck: boolean = false
 ): Promise<{ success: boolean; id?: string; error?: string; skipped?: boolean; rawError?: any }> => {
   try {
-    // Throttle inserts to avoid bursts that can intermittently fail on weak networks
-    const op = async (): Promise<DbResult<{ id: string }>> => {
-      if (!skipDuplicateCheck) {
-        const { data: existing, error: checkError } = await supabase
-          .from('kliping_records')
-          .select('id')
-          .eq('plant', record.plant)
-          .eq('tanggal', record.tanggal)
-          .eq('line', record.line)
-          .eq('regu', record.regu)
-          .eq('shift', record.shift)
-          .eq('id_unik', record.id_unik)
-          .eq('mesin', record.mesin)
-          .maybeSingle();
+    // Upload photos to Google Drive before saving
+    const photoFields = ['foto_etiket', 'foto_banded', 'foto_karton', 'foto_label_etiket',
+      'foto_label_bumbu', 'foto_label_minyak_bumbu', 'foto_label_si', 'foto_label_opp_banded'] as const;
 
-        if (checkError) {
-          console.error('Error checking existing record:', checkError);
-          return { success: false, error: checkError };
-        }
+    const recordData: any = { ...record, skipDuplicateCheck };
 
-        if (existing) {
-          console.log('Record already exists, skipping:', {
-            id_unik: record.id_unik,
-            mesin: record.mesin
-          });
-          return { success: true, data: { id: existing.id } };
+    for (const field of photoFields) {
+      const val = record[field];
+      if (val && typeof val === 'string' && val.startsWith('data:image')) {
+        const fileName = `${field}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.jpg`;
+        const uploadResult = await uploadPhotoFromDataUrl(val, fileName, 'kliping');
+        if (uploadResult.success && uploadResult.directUrl) {
+          recordData[field] = uploadResult.directUrl;
+        } else {
+          console.error(`[KLIPING] Failed to upload ${field}:`, uploadResult.error);
+          recordData[field] = '';
         }
       }
-
-      const { data, error } = await supabase
-        .from('kliping_records')
-        .insert([record])
-        .select('id')
-        .single();
-
-      if (error) {
-        console.error('Error inserting kliping record:', error);
-        return { success: false, error };
-      }
-
-      return { success: true, data: { id: data.id } };
-    };
-
-    const result = await requestQueue.add(() => runWithRetry(op, { label: 'insertKlipingRecord' }));
-
-    if (!result.success) {
-      return { success: false, error: result.error?.message || String(result.error), rawError: result.error };
     }
 
-    return { success: true, id: result.data.id };
+    const result = await gPost('insertKlipingRecord', recordData);
+
+    if (!result.success) {
+      return { success: false, error: result.error || 'Insert failed', rawError: result };
+    }
+
+    return { success: true, id: result.id, skipped: result.skipped };
   } catch (error) {
     console.error('Error in insertKlipingRecord:', error);
     return { success: false, error: String((error as any)?.message || error), rawError: error };
@@ -110,16 +42,25 @@ export const insertKlipingRecord = async (
 
 export const updateKlipingRecord = async (id: string, updates: Partial<KlipingRecord>): Promise<{ success: boolean; error?: string }> => {
   try {
-    const { error } = await supabase
-      .from('kliping_records')
-      .update(updates)
-      .eq('id', id);
+    // Upload any new photos
+    const photoFields = ['foto_etiket', 'foto_banded', 'foto_karton', 'foto_label_etiket',
+      'foto_label_bumbu', 'foto_label_minyak_bumbu', 'foto_label_si', 'foto_label_opp_banded'] as const;
 
-    if (error) {
-      console.error('Error updating kliping record:', error);
-      return { success: false, error: error.message };
+    const updateData: any = { id, ...updates };
+
+    for (const field of photoFields) {
+      const val = (updates as any)[field];
+      if (val && typeof val === 'string' && val.startsWith('data:image')) {
+        const fileName = `${field}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.jpg`;
+        const uploadResult = await uploadPhotoFromDataUrl(val, fileName, 'kliping');
+        if (uploadResult.success && uploadResult.directUrl) {
+          updateData[field] = uploadResult.directUrl;
+        }
+      }
     }
 
+    const result = await gPost('updateKlipingRecord', updateData);
+    if (!result.success) return { success: false, error: result.error };
     return { success: true };
   } catch (error) {
     console.error('Error in updateKlipingRecord:', error);
@@ -128,40 +69,16 @@ export const updateKlipingRecord = async (id: string, updates: Partial<KlipingRe
 };
 
 export const countKlipingPhotos = async (filters?: {
-  plant?: string;
-  startDate?: string;
-  endDate?: string;
-  line?: string;
-  regu?: string;
-  shift?: string;
+  plant?: string; startDate?: string; endDate?: string;
+  line?: string; regu?: string; shift?: string;
 }): Promise<{ [key: string]: number }> => {
   try {
     console.log('[KLIPING] countKlipingPhotos called with filters:', filters);
-
-    const { data, error } = await supabase.rpc('count_kliping_photos', {
-      p_plant: filters?.plant || null
-    });
-
-    if (error) {
-      console.error('[KLIPING] Error counting photos:', error);
-      return {};
-    }
-
-    console.log('[KLIPING] RPC returned data:', data);
-    console.log('[KLIPING] Data length:', data?.length);
-
-    const counts: { [key: string]: number } = {};
-    data?.forEach((row: any) => {
-      console.log('[KLIPING] Raw row.tanggal type:', typeof row.tanggal, 'value:', row.tanggal);
-      const key = `${row.tanggal}_${row.line}_${row.regu}_${row.shift}_${row.pengamatan_ke}_${row.mesin}`;
-      counts[key] = row.photo_count;
-      console.log('[KLIPING] Photo count key:', key, '=', row.photo_count);
-    });
-
-    console.log('[KLIPING] Final counts object:', counts);
-    console.log('[KLIPING] Total keys in counts:', Object.keys(counts).length);
-
-    return counts;
+    const params: Record<string, string> = {};
+    if (filters?.plant) params.plant = filters.plant;
+    const data = await gGet('countKlipingPhotos', params);
+    console.log('[KLIPING] Photo counts:', data);
+    return data || {};
   } catch (error) {
     console.error('[KLIPING] Exception in countKlipingPhotos:', error);
     return {};
@@ -169,71 +86,21 @@ export const countKlipingPhotos = async (filters?: {
 };
 
 export const getKlipingRecords = async (filters?: {
-  plant?: string;
-  startDate?: string;
-  endDate?: string;
-  line?: string;
-  regu?: string;
-  shift?: string;
+  plant?: string; startDate?: string; endDate?: string;
+  line?: string; regu?: string; shift?: string;
 }): Promise<KlipingRecord[]> => {
   try {
     console.log('[KLIPING] Fetching records with filters:', filters);
+    const params: Record<string, string> = {};
+    if (filters?.plant) params.plant = filters.plant;
+    if (filters?.startDate) params.startDate = filters.startDate;
+    if (filters?.endDate) params.endDate = filters.endDate;
+    if (filters?.line) params.line = filters.line;
+    if (filters?.regu) params.regu = filters.regu;
+    if (filters?.shift) params.shift = filters.shift;
 
-    let query = supabase
-      .from('kliping_records')
-      .select('id, id_unik, plant, tanggal, line, regu, shift, flavor, pengamatan_ke, mesin, created_by, created_at, updated_at, is_complete, pengamatan_timestamp')
-      .order('tanggal', { ascending: false })
-      .order('created_at', { ascending: false });
-
-    if (filters?.plant) {
-      query = query.eq('plant', filters.plant);
-      console.log('[KLIPING] Filtering by plant:', filters.plant);
-    }
-
-    if (filters?.startDate) {
-      query = query.gte('tanggal', filters.startDate);
-      console.log('[KLIPING] Filtering by startDate:', filters.startDate);
-    }
-
-    if (filters?.endDate) {
-      query = query.lte('tanggal', filters.endDate);
-      console.log('[KLIPING] Filtering by endDate:', filters.endDate);
-    }
-
-    if (filters?.line) {
-      query = query.eq('line', filters.line);
-      console.log('[KLIPING] Filtering by line:', filters.line);
-    }
-
-    if (filters?.regu) {
-      query = query.eq('regu', filters.regu);
-      console.log('[KLIPING] Filtering by regu:', filters.regu);
-    }
-
-    if (filters?.shift) {
-      query = query.eq('shift', filters.shift);
-      console.log('[KLIPING] Filtering by shift:', filters.shift);
-    }
-
-    // Remove the default 1000 row limit by setting a higher limit
-    query = query.limit(10000);
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('[KLIPING] Error fetching records:', error);
-      console.error('[KLIPING] Error details:', {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code
-      });
-      return [];
-    }
-
-    console.log('[KLIPING] Successfully fetched records:', data?.length || 0);
-    console.log('[KLIPING] Sample data:', data?.[0]);
-
+    const data = await gGet('getKlipingRecords', params);
+    console.log('[KLIPING] Fetched records:', data?.length || 0);
     return data || [];
   } catch (error) {
     console.error('[KLIPING] Exception in getKlipingRecords:', error);
@@ -243,17 +110,14 @@ export const getKlipingRecords = async (filters?: {
 
 export const getKlipingRecordById = async (id: string): Promise<KlipingRecord | null> => {
   try {
-    const { data, error } = await supabase
-      .from('kliping_records')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (error) {
-      console.error('Error fetching kliping record:', error);
-      return null;
+    const data = await gGet('getKlipingRecordById', { id });
+    if (!data) return null;
+    // Convert Drive URLs to direct URLs for display
+    const photoFields = ['foto_etiket', 'foto_banded', 'foto_karton', 'foto_label_etiket',
+      'foto_label_bumbu', 'foto_label_minyak_bumbu', 'foto_label_si', 'foto_label_opp_banded'];
+    for (const f of photoFields) {
+      if (data[f]) data[f] = getDriveDirectUrl(data[f]);
     }
-
     return data;
   } catch (error) {
     console.error('Error in getKlipingRecordById:', error);
@@ -262,35 +126,28 @@ export const getKlipingRecordById = async (id: string): Promise<KlipingRecord | 
 };
 
 export const getKlipingRecordPhotos = async (filters: {
-  plant: string;
-  tanggal: string;
-  line: string;
-  regu: string;
-  shift: string;
-  pengamatan_ke: number;
-  mesin: string;
+  plant: string; tanggal: string; line: string; regu: string;
+  shift: string; pengamatan_ke: number; mesin: string;
 }): Promise<Partial<KlipingRecord> | null> => {
   try {
-    console.log('[KLIPING] Fetching photos for mesin with filters:', filters);
-
-    const { data, error } = await supabase
-      .from('kliping_records')
-      .select('foto_etiket, foto_banded, foto_karton, foto_label_etiket, foto_label_bumbu, foto_label_minyak_bumbu, foto_label_si, foto_label_opp_banded')
-      .eq('plant', filters.plant)
-      .eq('tanggal', filters.tanggal)
-      .eq('line', filters.line)
-      .eq('regu', filters.regu)
-      .eq('shift', filters.shift)
-      .eq('pengamatan_ke', filters.pengamatan_ke)
-      .eq('mesin', filters.mesin)
-      .maybeSingle();
-
-    if (error) {
-      console.error('[KLIPING] Error fetching photos:', error);
-      return null;
+    console.log('[KLIPING] Fetching photos with filters:', filters);
+    const params: Record<string, string> = {
+      plant: filters.plant,
+      tanggal: filters.tanggal,
+      line: filters.line,
+      regu: filters.regu,
+      shift: filters.shift,
+      pengamatan_ke: String(filters.pengamatan_ke),
+      mesin: filters.mesin
+    };
+    const data = await gGet('getKlipingRecordPhotos', params);
+    if (!data) return null;
+    // Convert Drive URLs
+    const photoFields = ['foto_etiket', 'foto_banded', 'foto_karton', 'foto_label_etiket',
+      'foto_label_bumbu', 'foto_label_minyak_bumbu', 'foto_label_si', 'foto_label_opp_banded'];
+    for (const f of photoFields) {
+      if (data[f]) data[f] = getDriveDirectUrl(data[f]);
     }
-
-    console.log('[KLIPING] Photos fetched successfully:', data ? 'Yes' : 'No');
     return data;
   } catch (error) {
     console.error('[KLIPING] Exception in getKlipingRecordPhotos:', error);
@@ -299,78 +156,29 @@ export const getKlipingRecordPhotos = async (filters: {
 };
 
 export const getKlipingRecordsWithPhotos = async (filters?: {
-  plant?: string;
-  startDate?: string;
-  endDate?: string;
-  line?: string;
-  regu?: string;
-  shift?: string;
+  plant?: string; startDate?: string; endDate?: string;
+  line?: string; regu?: string; shift?: string;
 }): Promise<KlipingRecord[]> => {
   try {
-    console.log('[KLIPING] Fetching records WITH PHOTOS with filters:', filters);
+    console.log('[KLIPING] Fetching records WITH PHOTOS');
+    const params: Record<string, string> = { withPhotos: 'true' };
+    if (filters?.plant) params.plant = filters.plant;
+    if (filters?.startDate) params.startDate = filters.startDate;
+    if (filters?.endDate) params.endDate = filters.endDate;
+    if (filters?.line) params.line = filters.line;
+    if (filters?.regu) params.regu = filters.regu;
+    if (filters?.shift) params.shift = filters.shift;
 
-    const BATCH_SIZE = 10;
-    let allRecords: KlipingRecord[] = [];
-    let offset = 0;
-    let hasMore = true;
-
-    while (hasMore) {
-      console.log(`[KLIPING] Fetching batch ${Math.floor(offset / BATCH_SIZE) + 1} starting at offset ${offset}...`);
-
-      const { data, error } = await requestQueue.add(async () => {
-        let query = supabase
-          .from('kliping_records')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .range(offset, offset + BATCH_SIZE - 1);
-
-        if (filters?.plant) {
-          query = query.eq('plant', filters.plant);
-        }
-
-        if (filters?.startDate) {
-          query = query.gte('tanggal', filters.startDate);
-        }
-
-        if (filters?.endDate) {
-          query = query.lte('tanggal', filters.endDate);
-        }
-
-        if (filters?.line) {
-          query = query.eq('line', filters.line);
-        }
-
-        if (filters?.regu) {
-          query = query.eq('regu', filters.regu);
-        }
-
-        if (filters?.shift) {
-          query = query.eq('shift', filters.shift);
-        }
-
-        return await query;
-      });
-
-      if (error) {
-        console.error('[KLIPING] Error fetching batch:', error);
-        throw error;
+    const data = await gGet('getKlipingRecords', params);
+    // Convert Drive URLs for photos
+    const photoFields = ['foto_etiket', 'foto_banded', 'foto_karton', 'foto_label_etiket',
+      'foto_label_bumbu', 'foto_label_minyak_bumbu', 'foto_label_si', 'foto_label_opp_banded'];
+    return (data || []).map((r: any) => {
+      for (const f of photoFields) {
+        if (r[f]) r[f] = getDriveDirectUrl(r[f]);
       }
-
-      if (!data || data.length === 0) {
-        hasMore = false;
-      } else {
-        console.log(`[KLIPING] Fetched ${data.length} records in this batch, total so far: ${allRecords.length + data.length}`);
-        allRecords = allRecords.concat(data);
-        offset += BATCH_SIZE;
-
-        if (data.length < BATCH_SIZE) {
-          hasMore = false;
-        }
-      }
-    }
-
-    console.log(`[KLIPING] Total fetched: ${allRecords.length} records WITH PHOTOS`);
-    return allRecords;
+      return r;
+    });
   } catch (error) {
     console.error('[KLIPING] Error in getKlipingRecordsWithPhotos:', error);
     return [];
@@ -379,50 +187,22 @@ export const getKlipingRecordsWithPhotos = async (filters?: {
 
 export const deleteKlipingRecord = async (id: string): Promise<{ success: boolean; error?: string }> => {
   try {
-    const { data: record } = await supabase
-      .from('kliping_records')
-      .select('*')
-      .eq('id', id)
-      .single();
-
+    const record = await getKlipingRecordById(id);
     if (record) {
       const currentUserStr = localStorage.getItem('currentUser');
       let deletedBy = 'anonymous';
       if (currentUserStr) {
-        try {
-          const currentUser = JSON.parse(currentUserStr);
-          deletedBy = currentUser.full_name || currentUser.username || 'anonymous';
-        } catch (e) {
-          console.error('Failed to parse currentUser:', e);
-        }
+        try { const cu = JSON.parse(currentUserStr); deletedBy = cu.full_name || cu.username || 'anonymous'; } catch {}
       }
-
       await logDelete({
-        table_name: 'kliping_records',
-        record_id: id,
-        affected_count: 1,
-        deleted_by: deletedBy,
-        plant: record.plant,
-        additional_info: {
-          line: record.line,
-          tanggal: record.tanggal,
-          regu: record.regu,
-          shift: record.shift,
-          id_unik: record.id_unik
-        }
+        table_name: 'kliping_records', record_id: id, affected_count: 1,
+        deleted_by: deletedBy, plant: record.plant,
+        additional_info: { line: record.line, tanggal: record.tanggal, regu: record.regu, shift: record.shift, id_unik: record.id_unik }
       });
     }
 
-    const { error } = await supabase
-      .from('kliping_records')
-      .delete()
-      .eq('id', id);
-
-    if (error) {
-      console.error('Error deleting kliping record:', error);
-      return { success: false, error: error.message };
-    }
-
+    const result = await gPost('deleteKlipingRecord', { id });
+    if (!result.success) return { success: false, error: result.error };
     return { success: true };
   } catch (error) {
     console.error('Error in deleteKlipingRecord:', error);
@@ -432,50 +212,26 @@ export const deleteKlipingRecord = async (id: string): Promise<{ success: boolea
 
 export const deleteKlipingRecordsByIdUnik = async (idUnik: string): Promise<{ success: boolean; error?: string }> => {
   try {
-    const { data: records } = await supabase
-      .from('kliping_records')
-      .select('*')
-      .eq('id_unik', idUnik);
+    // Log the deletion
+    const records = await getKlipingRecords();
+    const matching = records.filter(r => r.id_unik === idUnik);
 
-    if (records && records.length > 0) {
+    if (matching.length > 0) {
       const currentUserStr = localStorage.getItem('currentUser');
       let deletedBy = 'anonymous';
       if (currentUserStr) {
-        try {
-          const currentUser = JSON.parse(currentUserStr);
-          deletedBy = currentUser.full_name || currentUser.username || 'anonymous';
-        } catch (e) {
-          console.error('Failed to parse currentUser:', e);
-        }
+        try { const cu = JSON.parse(currentUserStr); deletedBy = cu.full_name || cu.username || 'anonymous'; } catch {}
       }
-
-      const firstRecord = records[0];
+      const first = matching[0];
       await logDelete({
-        table_name: 'kliping_records',
-        record_id: idUnik,
-        affected_count: records.length,
-        deleted_by: deletedBy,
-        action: 'BULK_DELETE',
-        plant: firstRecord.plant,
-        additional_info: {
-          line: firstRecord.line,
-          tanggal: firstRecord.tanggal,
-          regu: firstRecord.regu,
-          shift: firstRecord.shift
-        }
+        table_name: 'kliping_records', record_id: idUnik, affected_count: matching.length,
+        deleted_by: deletedBy, action: 'BULK_DELETE', plant: first.plant,
+        additional_info: { line: first.line, tanggal: first.tanggal, regu: first.regu, shift: first.shift }
       });
     }
 
-    const { error } = await supabase
-      .from('kliping_records')
-      .delete()
-      .eq('id_unik', idUnik);
-
-    if (error) {
-      console.error('Error deleting kliping records by id_unik:', error);
-      return { success: false, error: error.message };
-    }
-
+    const result = await gPost('deleteKlipingByIdUnik', { id_unik: idUnik });
+    if (!result.success) return { success: false, error: result.error };
     return { success: true };
   } catch (error) {
     console.error('Error in deleteKlipingRecordsByIdUnik:', error);
@@ -484,22 +240,7 @@ export const deleteKlipingRecordsByIdUnik = async (idUnik: string): Promise<{ su
 };
 
 export const getLinesFromDatabase = async (): Promise<string[]> => {
-  try {
-    const { data, error } = await supabase
-      .from('lines')
-      .select('line_name')
-      .order('line_name');
-
-    if (error) {
-      console.error('Error fetching lines:', error);
-      return ['Line 1', 'Line 2', 'Line 3', 'Line 4', 'Line 5', 'Line 6', 'Line 7', 'Line 8'];
-    }
-
-    return data?.map(item => item.line_name) || ['Line 1', 'Line 2', 'Line 3', 'Line 4', 'Line 5', 'Line 6', 'Line 7', 'Line 8'];
-  } catch (error) {
-    console.error('Error in getLinesFromDatabase:', error);
-    return ['Line 1', 'Line 2', 'Line 3', 'Line 4', 'Line 5', 'Line 6', 'Line 7', 'Line 8'];
-  }
+  return ['Line 1', 'Line 2', 'Line 3', 'Line 4', 'Line 5', 'Line 6', 'Line 7', 'Line 8'];
 };
 
 export const REGU_OPTIONS = ['A', 'B', 'C'];
