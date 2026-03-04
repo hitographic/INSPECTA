@@ -362,8 +362,8 @@ export default function AdminPanel() {
   const filteredAndSortedUsers = users
     .filter(user => {
       const matchesSearch =
-        user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.full_name.toLowerCase().includes(searchTerm.toLowerCase());
+        String(user.username || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        String(user.full_name || '').toLowerCase().includes(searchTerm.toLowerCase());
 
       const matchesRole = filterRole === 'all' || user.role === filterRole;
       const matchesStatus = filterStatus === 'all' ||
