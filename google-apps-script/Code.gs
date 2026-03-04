@@ -178,6 +178,20 @@ function handleRequest(e) {
       case 'getPhotoUrl':
         result = handleGetPhotoUrl(params);
         break;
+
+      // ===== GENERIC CRUD (for MasterDataManagement, updateStatus, etc.) =====
+      case 'get':
+        result = handleGenericGet(params);
+        break;
+      case 'insert':
+        result = handleGenericInsert(postData);
+        break;
+      case 'update':
+        result = handleGenericUpdate(postData);
+        break;
+      case 'delete':
+        result = handleGenericDelete(postData);
+        break;
         
       default:
         result = { error: 'Unknown action: ' + action };
@@ -1107,6 +1121,109 @@ function handleGetPhotoUrl(params) {
       viewUrl: 'https://drive.google.com/file/d/' + fileId + '/view',
       directUrl: 'https://drive.google.com/uc?export=view&id=' + fileId
     };
+  } catch (error) {
+    return { error: error.toString() };
+  }
+}
+
+// ===== GENERIC CRUD HANDLERS =====
+// Used by MasterDataManagement, updateStatus, monitoringExport, klipingExport, etc.
+
+// Allowed tables for generic CRUD (security whitelist)
+const ALLOWED_TABLES = [
+  'sanitation_areas', 'sanitation_bagian', 'supervisors',
+  'sanitation_records', 'kliping_records', 'monitoring_records',
+  'app_users', 'user_permissions', 'permission_definitions',
+  'audit_logs', 'line_configurations'
+];
+
+function handleGenericGet(params) {
+  try {
+    const table = params.table;
+    if (!table || ALLOWED_TABLES.indexOf(table) === -1) {
+      return { error: 'Invalid or missing table: ' + table };
+    }
+    
+    const data = getSheetData(table);
+    
+    // If an id is requested, return single record
+    if (params.id) {
+      const record = data.find(function(r) { return String(r.id) === String(params.id); });
+      return record || { error: 'Record not found' };
+    }
+    
+    return data;
+  } catch (error) {
+    return { error: error.toString() };
+  }
+}
+
+function handleGenericInsert(postData) {
+  try {
+    const table = postData.table;
+    if (!table || ALLOWED_TABLES.indexOf(table) === -1) {
+      return { error: 'Invalid or missing table: ' + table };
+    }
+    
+    const data = postData.data || {};
+    
+    // Generate an id if not provided
+    if (!data.id) {
+      data.id = generateUUID();
+    }
+    
+    // Add timestamps
+    data.created_at = data.created_at || nowISO();
+    data.updated_at = nowISO();
+    
+    appendRow(table, data);
+    
+    return { success: true, id: data.id, data: data };
+  } catch (error) {
+    return { error: error.toString() };
+  }
+}
+
+function handleGenericUpdate(postData) {
+  try {
+    const table = postData.table;
+    if (!table || ALLOWED_TABLES.indexOf(table) === -1) {
+      return { error: 'Invalid or missing table: ' + table };
+    }
+    
+    const id = postData.id;
+    if (!id) return { error: 'Missing id' };
+    
+    const data = postData.data || {};
+    data.updated_at = nowISO();
+    
+    const rowIndex = findRowIndex(table, 'id', id);
+    if (rowIndex === -1) return { error: 'Record not found with id: ' + id };
+    
+    updateRow(table, rowIndex, data);
+    
+    return { success: true, id: id };
+  } catch (error) {
+    return { error: error.toString() };
+  }
+}
+
+function handleGenericDelete(postData) {
+  try {
+    const table = postData.table;
+    if (!table || ALLOWED_TABLES.indexOf(table) === -1) {
+      return { error: 'Invalid or missing table: ' + table };
+    }
+    
+    const id = postData.id;
+    if (!id) return { error: 'Missing id' };
+    
+    const rowIndex = findRowIndex(table, 'id', id);
+    if (rowIndex === -1) return { error: 'Record not found with id: ' + id };
+    
+    deleteRows(table, [rowIndex]);
+    
+    return { success: true, deleted: id };
   } catch (error) {
     return { error: error.toString() };
   }
