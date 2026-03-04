@@ -544,11 +544,11 @@ function handleGetUserPermissions(data) {
 function handleGetSanitationRecords(params) {
   let records = getSheetData('sanitation_records');
   
-  if (params.plant) records = records.filter(r => r.plant === params.plant);
-  if (params.line) records = records.filter(r => r.line === params.line);
+  if (params.plant) records = records.filter(r => String(r.plant) === String(params.plant));
+  if (params.line) records = records.filter(r => String(r.line) === String(params.line));
   if (params.tanggal) records = records.filter(r => String(r.tanggal) === String(params.tanggal));
-  if (params.status) records = records.filter(r => r.status === params.status);
-  if (params.excludeStatus) records = records.filter(r => r.status !== params.excludeStatus);
+  if (params.status) records = records.filter(r => String(r.status) === String(params.status));
+  if (params.excludeStatus) records = records.filter(r => String(r.status) !== String(params.excludeStatus));
   
   // Sort by tanggal descending
   records.sort((a, b) => String(b.tanggal).localeCompare(String(a.tanggal)));
@@ -624,8 +624,8 @@ function handleDeleteSanitationRecord(data) {
 function handleGetSanitationRecordsMetadata(params) {
   let records = getSheetData('sanitation_records');
   
-  if (params.plant) records = records.filter(r => r.plant === params.plant);
-  if (params.line) records = records.filter(r => r.line === params.line);
+  if (params.plant) records = records.filter(r => String(r.plant) === String(params.plant));
+  if (params.line) records = records.filter(r => String(r.line) === String(params.line));
   if (params.tanggal) records = records.filter(r => String(r.tanggal) === String(params.tanggal));
   
   // Remove duplicates - keep latest for each area+bagian
@@ -654,12 +654,12 @@ function handleGetSanitationRecordsMetadata(params) {
 function handleGetKlipingRecords(params) {
   let records = getSheetData('kliping_records');
   
-  if (params.plant) records = records.filter(r => r.plant === params.plant);
+  if (params.plant) records = records.filter(r => String(r.plant) === String(params.plant));
   if (params.startDate) records = records.filter(r => String(r.tanggal) >= params.startDate);
   if (params.endDate) records = records.filter(r => String(r.tanggal) <= params.endDate);
-  if (params.line) records = records.filter(r => r.line === params.line);
-  if (params.regu) records = records.filter(r => r.regu === params.regu);
-  if (params.shift) records = records.filter(r => r.shift === params.shift);
+  if (params.line) records = records.filter(r => String(r.line) === String(params.line));
+  if (params.regu) records = records.filter(r => String(r.regu) === String(params.regu));
+  if (params.shift) records = records.filter(r => String(r.shift) === String(params.shift));
   
   // Select only metadata columns (not photo data) unless withPhotos=true
   if (params.withPhotos !== 'true') {
@@ -699,13 +699,13 @@ function handleGetKlipingRecordById(params) {
 function handleGetKlipingRecordPhotos(params) {
   const records = getSheetData('kliping_records');
   const record = records.find(r =>
-    r.plant === params.plant &&
+    String(r.plant) === String(params.plant) &&
     String(r.tanggal) === String(params.tanggal) &&
-    r.line === params.line &&
-    r.regu === params.regu &&
-    r.shift === params.shift &&
+    String(r.line) === String(params.line) &&
+    String(r.regu) === String(params.regu) &&
+    String(r.shift) === String(params.shift) &&
     String(r.pengamatan_ke) === String(params.pengamatan_ke) &&
-    r.mesin === params.mesin
+    String(r.mesin) === String(params.mesin)
   );
   
   if (!record) return null;
@@ -726,8 +726,8 @@ function handleInsertKlipingRecord(data) {
   // Always check for exact duplicate by id_unik + mesin (prevent double-submit)
   var records = getSheetData('kliping_records');
   var existing = records.find(function(r) {
-    return r.id_unik === data.id_unik &&
-           r.mesin === data.mesin &&
+    return String(r.id_unik) === String(data.id_unik) &&
+           String(r.mesin) === String(data.mesin) &&
            String(r.pengamatan_ke) === String(data.pengamatan_ke);
   });
   
@@ -809,7 +809,7 @@ function handleDeleteKlipingByIdUnik(data) {
   
   // Delete associated Drive photos first
   var allRecords = getSheetData('kliping_records');
-  var matching = allRecords.filter(function(r) { return r.id_unik === data.id_unik; });
+  var matching = allRecords.filter(function(r) { return String(r.id_unik) === String(data.id_unik); });
   matching.forEach(function(record) {
     deleteRecordPhotos(record, KLIPING_PHOTO_FIELDS);
   });
@@ -824,7 +824,7 @@ function handleDeleteKlipingByIdUnik(data) {
 function handleCountKlipingPhotos(params) {
   let records = getSheetData('kliping_records');
   
-  if (params.plant) records = records.filter(r => r.plant === params.plant);
+  if (params.plant) records = records.filter(r => String(r.plant) === String(params.plant));
   
   const photoFields = ['foto_etiket', 'foto_banded', 'foto_karton', 'foto_label_etiket',
                         'foto_label_bumbu', 'foto_label_minyak_bumbu', 'foto_label_si', 'foto_label_opp_banded'];
@@ -847,12 +847,12 @@ function handleCountKlipingPhotos(params) {
 function handleGetMonitoringRecords(params) {
   let records = getSheetData('monitoring_records');
   
-  if (params.plant) records = records.filter(r => r.plant === params.plant);
+  if (params.plant) records = records.filter(r => String(r.plant) === String(params.plant));
   if (params.startDate) records = records.filter(r => String(r.tanggal) >= params.startDate);
   if (params.endDate) records = records.filter(r => String(r.tanggal) <= params.endDate);
   if (params.lines) {
     const lineList = params.lines.split(',');
-    records = records.filter(r => lineList.includes(r.line));
+    records = records.filter(r => lineList.includes(String(r.line)));
   }
   
   // Return without foto_url for list view
@@ -874,9 +874,9 @@ function handleGetMonitoringRecordsWithPhotos(params) {
   let records = getSheetData('monitoring_records');
   
   records = records.filter(r =>
-    r.plant === params.plant &&
+    String(r.plant) === String(params.plant) &&
     String(r.tanggal) === String(params.tanggal) &&
-    r.line === params.line
+    String(r.line) === String(params.line)
   );
   
   records.sort((a, b) => Number(a.data_number) - Number(b.data_number));
@@ -949,7 +949,7 @@ function handleDeleteMonitoringSession(data) {
   // Delete associated photos
   var allRecords = getSheetData('monitoring_records');
   var matching = allRecords.filter(function(r) {
-    return r.plant === data.plant && String(r.tanggal) === String(data.tanggal) && r.line === data.line;
+    return String(r.plant) === String(data.plant) && String(r.tanggal) === String(data.tanggal) && String(r.line) === String(data.line);
   });
   matching.forEach(function(record) {
     deleteRecordPhotos(record, MONITORING_PHOTO_FIELDS);

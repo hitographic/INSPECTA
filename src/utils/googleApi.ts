@@ -203,25 +203,70 @@ export async function fetchDriveImageAsBase64(urlOrFileId: string): Promise<stri
     return _photoBase64Cache.get(cacheKey)!;
   }
   
+  const fileId = extractDriveFileId(urlOrFileId);
+  if (!fileId) return null;
+
+  const cacheResult = (result: string) => {
+    if (_photoBase64Cache.size > 100) {
+      const firstKey = _photoBase64Cache.keys().next().value;
+      if (firstKey) _photoBase64Cache.delete(firstKey);
+    }
+    _photoBase64Cache.set(cacheKey, result);
+    return result;
+  };
+  
+  // Method 1: Try Apps Script proxy (server-side, most reliable)
   try {
-    const fileId = extractDriveFileId(urlOrFileId);
-    if (!fileId) return null;
-    
     const data = await gGet('getPhotoBase64', { fileId });
     if (data && data.success && data.base64) {
-      // Cache the result (limit cache size)
-      if (_photoBase64Cache.size > 100) {
-        const firstKey = _photoBase64Cache.keys().next().value;
-        if (firstKey) _photoBase64Cache.delete(firstKey);
-      }
-      _photoBase64Cache.set(cacheKey, data.base64);
-      return data.base64;
+      return cacheResult(data.base64);
     }
-    return null;
   } catch (error) {
-    console.error('[GOOGLE API] Error fetching photo as base64:', error);
-    return null;
+    console.warn('[GOOGLE API] Proxy getPhotoBase64 failed, trying fallback:', error);
   }
+  
+  // Method 2: Fallback - Google Drive thumbnail URL (supports cross-origin in img tags)
+  const thumbnailUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=w800`;
+  try {
+    const response = await fetch(thumbnailUrl, { mode: 'cors' });
+    if (response.ok) {
+      const blob = await response.blob();
+      const result = await new Promise<string | null>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      });
+      if (result) {
+        return cacheResult(result);
+      }
+    }
+  } catch (error) {
+    console.warn('[GOOGLE API] Thumbnail fallback failed:', error);
+  }
+  
+  // Method 3: Fallback - lh3 direct URL
+  const lh3Url = `https://lh3.googleusercontent.com/d/${fileId}`;
+  try {
+    const response = await fetch(lh3Url, { mode: 'cors' });
+    if (response.ok) {
+      const blob = await response.blob();
+      const result = await new Promise<string | null>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      });
+      if (result) {
+        return cacheResult(result);
+      }
+    }
+  } catch (error) {
+    console.warn('[GOOGLE API] lh3 fallback failed:', error);
+  }
+  
+  console.error('[GOOGLE API] All methods failed for file:', fileId);
+  return null;
 }
 
 /**
