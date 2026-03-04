@@ -4,7 +4,7 @@ import { ArrowLeft, Plus, FileDown, Trash2, Eye, X } from 'lucide-react';
 import { KlipingRecord } from '../types/database';
 import { getKlipingRecords, getKlipingRecordsWithPhotos, getKlipingRecordPhotos, countKlipingPhotos, REGU_OPTIONS, SHIFT_OPTIONS, FOTO_TYPES } from '../utils/klipingDatabase';
 import { exportKlipingToExcel, exportKlipingToPDF, exportAllKlipingSequential } from '../utils/klipingExport';
-import { gGet, gPost } from '../utils/googleApi';
+import { gGet, gPost, isDriveUrl, fetchDriveImageAsBase64 } from '../utils/googleApi';
 import { PLANTS } from '../constants/AppConstants';
 import { getUserPermissions } from '../utils/authService';
 import { requestQueue } from '../utils/requestQueue';
@@ -370,7 +370,23 @@ const KlipingRecordsScreen: React.FC = () => {
       });
 
       if (photos) {
-        setPreviewPhotos(photos as { [key: string]: string });
+        // Convert Drive URLs to base64 via proxy for CORS-safe display
+        const photoEntries = Object.entries(photos).filter(([_, v]) => typeof v === 'string' && v);
+        const convertedPhotos: { [key: string]: string } = {};
+        
+        await Promise.all(photoEntries.map(async ([key, url]) => {
+          const urlStr = url as string;
+          if (isDriveUrl(urlStr)) {
+            const base64 = await fetchDriveImageAsBase64(urlStr);
+            if (base64) {
+              convertedPhotos[key] = base64;
+              return;
+            }
+          }
+          convertedPhotos[key] = urlStr;
+        }));
+        
+        setPreviewPhotos(convertedPhotos);
       } else {
         setPreviewPhotos({});
         alert('Tidak ada foto untuk mesin ini');

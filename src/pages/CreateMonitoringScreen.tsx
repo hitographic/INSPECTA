@@ -4,6 +4,7 @@ import { ArrowLeft, Camera, Upload, Trash2, Eye, Edit, X, ChevronDown, ChevronUp
 import { MonitoringRecord, saveMonitoringRecord, getMonitoringRecordsWithPhotos, deleteMonitoringRecord, updateMonitoringRecord, AREA_OPTIONS } from '../utils/monitoringDatabase';
 import { CameraManager } from '../utils/camera';
 import { sortAreasByDisplayOrder } from '../utils/masterData';
+import { isDriveUrl, fetchDriveImageAsBase64 } from '../utils/googleApi';
 
 interface LocationState {
   plant: string;
@@ -56,6 +57,22 @@ const CreateMonitoringScreen: React.FC = () => {
   const cameraManager = useRef<CameraManager | null>(null);
 
   const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+
+  // Helper to show photo preview - converts Drive URLs to base64 via proxy
+  const handleShowPreview = async (photoUrl: string | null) => {
+    if (!photoUrl) return;
+    if (!isDriveUrl(photoUrl)) {
+      setPreviewImage(photoUrl);
+      return;
+    }
+    setPreviewImage(null);
+    const base64 = await fetchDriveImageAsBase64(photoUrl);
+    if (base64) {
+      setPreviewImage(base64);
+    } else {
+      setPreviewImage(photoUrl);
+    }
+  };
 
   const loadExistingData = async () => {
     try {
@@ -687,7 +704,7 @@ const CreateMonitoringScreen: React.FC = () => {
                   </div>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button
-                      onClick={() => setPreviewImage(currentFoto)}
+                      onClick={() => handleShowPreview(currentFoto)}
                       style={{
                         padding: '8px 16px',
                         background: '#10b981',
@@ -829,7 +846,7 @@ const CreateMonitoringScreen: React.FC = () => {
                     <div style={{ display: 'flex', gap: '6px' }}>
                       {entry.foto_url && (
                         <button
-                          onClick={() => setPreviewImage(entry.foto_url)}
+                          onClick={() => handleShowPreview(entry.foto_url)}
                           style={{
                             padding: '6px 12px',
                             background: '#10b981',

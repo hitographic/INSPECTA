@@ -160,6 +160,71 @@ export function isDriveUrl(url: string): boolean {
 }
 
 /**
+ * Extract Google Drive file ID from various URL formats.
+ * Returns null if not a Drive URL or file ID.
+ */
+export function extractDriveFileId(url: string): string | null {
+  if (!url || typeof url !== 'string') return null;
+  
+  // Format: https://lh3.googleusercontent.com/d/FILE_ID
+  const matchLh3 = url.match(/googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/);
+  if (matchLh3) return matchLh3[1];
+  
+  // Format: https://drive.google.com/uc?export=view&id=FILE_ID or thumbnail?id=FILE_ID
+  const matchId = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (matchId) return matchId[1];
+  
+  // Format: https://drive.google.com/file/d/FILE_ID/view
+  const matchD = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (matchD) return matchD[1];
+  
+  // If it looks like a plain file ID (long alphanumeric)
+  if (url.length > 20 && !/[\/\:\.?&]/.test(url)) return url;
+  
+  return null;
+}
+
+/**
+ * Fetch a Drive image as base64 data URL via Apps Script proxy.
+ * This bypasses CORS restrictions that prevent direct loading of Drive images.
+ * Includes in-memory caching to avoid redundant requests.
+ */
+const _photoBase64Cache = new Map<string, string>();
+
+export async function fetchDriveImageAsBase64(urlOrFileId: string): Promise<string | null> {
+  if (!urlOrFileId) return null;
+  
+  // If already base64, return as-is
+  if (urlOrFileId.startsWith('data:image')) return urlOrFileId;
+  
+  // Check cache
+  const cacheKey = urlOrFileId;
+  if (_photoBase64Cache.has(cacheKey)) {
+    return _photoBase64Cache.get(cacheKey)!;
+  }
+  
+  try {
+    const fileId = extractDriveFileId(urlOrFileId);
+    if (!fileId) return null;
+    
+    const data = await gGet('getPhotoBase64', { fileId });
+    if (data && data.success && data.base64) {
+      // Cache the result (limit cache size)
+      if (_photoBase64Cache.size > 100) {
+        const firstKey = _photoBase64Cache.keys().next().value;
+        if (firstKey) _photoBase64Cache.delete(firstKey);
+      }
+      _photoBase64Cache.set(cacheKey, data.base64);
+      return data.base64;
+    }
+    return null;
+  } catch (error) {
+    console.error('[GOOGLE API] Error fetching photo as base64:', error);
+    return null;
+  }
+}
+
+/**
  * Normalize a date value to yyyy-MM-dd format.
  * Handles ISO strings (2026-03-03T17:00:00.000Z), Date objects, and plain yyyy-MM-dd strings.
  */

@@ -2,7 +2,7 @@ import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import { SanitationRecord } from '../types/database';
 import { getRecordById } from './database';
-import { gGet, getDriveDirectUrl, isDriveUrl } from './googleApi';
+import { gGet, isDriveUrl, fetchDriveImageAsBase64 } from './googleApi';
 import { getAreas, getBagianByAreaName } from './masterData';
 
 // Convert base64 image to buffer for ExcelJS
@@ -114,12 +114,16 @@ const hashBase64 = (str: string): string => {
 };
 
 /**
- * Fetch an image URL as an object URL for cross-origin loading
+ * Fetch an image URL as a base64 data URL, handling Drive URLs via proxy
  */
 const fetchImageAsObjectUrl = async (url: string): Promise<string | null> => {
+  // For Drive URLs, use the Apps Script proxy to get base64 directly
+  if (isDriveUrl(url)) {
+    return fetchDriveImageAsBase64(url);
+  }
+  // For non-Drive URLs, try direct fetch
   try {
-    const directUrl = isDriveUrl(url) ? getDriveDirectUrl(url) : url;
-    const response = await fetch(directUrl, { mode: 'cors' });
+    const response = await fetch(url, { mode: 'cors' });
     if (!response.ok) return null;
     const blob = await response.blob();
     return URL.createObjectURL(blob);
@@ -162,18 +166,24 @@ const resizeImage = (imageUrlOrBase64: string, targetWidth: number = 300, target
     };
     img.onerror = () => resolve(imageUrlOrBase64);
     
-    // For Drive URLs, fetch as blob first to avoid CORS issues
+    // For Drive URLs, fetch via proxy to get base64 (avoids CORS)
     if (isDriveUrl(imageUrlOrBase64) || (imageUrlOrBase64.startsWith('https://') && !imageUrlOrBase64.startsWith('data:'))) {
-      const objectUrl = await fetchImageAsObjectUrl(imageUrlOrBase64);
-      if (objectUrl) {
-        const origOnload = img.onload;
-        img.onload = function(e) {
-          URL.revokeObjectURL(objectUrl);
-          if (origOnload) (origOnload as any).call(this, e);
-        };
-        img.src = objectUrl;
+      const base64OrObjectUrl = await fetchImageAsObjectUrl(imageUrlOrBase64);
+      if (base64OrObjectUrl) {
+        // If it's a base64 data URL (from proxy), use directly
+        if (base64OrObjectUrl.startsWith('data:')) {
+          img.src = base64OrObjectUrl;
+        } else {
+          // It's an object URL, clean up after load
+          const origOnload = img.onload;
+          img.onload = function(e) {
+            URL.revokeObjectURL(base64OrObjectUrl);
+            if (origOnload) (origOnload as any).call(this, e);
+          };
+          img.src = base64OrObjectUrl;
+        }
       } else {
-        img.src = getDriveDirectUrl(imageUrlOrBase64);
+        resolve(imageUrlOrBase64);
       }
     } else {
       img.src = imageUrlOrBase64;

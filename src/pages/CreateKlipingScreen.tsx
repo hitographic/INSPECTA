@@ -11,6 +11,7 @@ import {
   FOTO_TYPES
 } from '../utils/klipingDatabase';
 import { CameraManager } from '../utils/camera';
+import { isDriveUrl, fetchDriveImageAsBase64 } from '../utils/googleApi';
 
 interface LocationState {
   plant: string;
@@ -522,6 +523,26 @@ const CreateKlipingScreen: React.FC = () => {
     }
   };
 
+  // Helper: preview a photo, fetching via proxy if it's a Drive URL
+  const handleShowPreview = async (photoUrl: string) => {
+    if (!photoUrl) return;
+    if (photoUrl.startsWith('data:image')) {
+      setPreviewImage(photoUrl);
+      return;
+    }
+    if (isDriveUrl(photoUrl)) {
+      setPreviewImage(null); // show loading state
+      const base64 = await fetchDriveImageAsBase64(photoUrl);
+      if (base64) {
+        setPreviewImage(base64);
+      } else {
+        alert('Gagal memuat foto');
+      }
+      return;
+    }
+    setPreviewImage(photoUrl);
+  };
+
   const handlePreviewPhotos = async (pengamatanData: PengamatanData, mesin: string) => {
     setLoadingPhotos(true);
     setPhotoPreviewModal(true);
@@ -546,13 +567,30 @@ const CreateKlipingScreen: React.FC = () => {
 
       if (photos) {
         const photoData: { [key: string]: string } = {};
+        const loadPromises: Promise<void>[] = [];
+
         FOTO_TYPES.forEach(ft => {
           const val = (photos as any)[ft.key];
           if (val) {
             console.log(`[PREVIEW] Found photo for ${ft.key}`);
-            photoData[ft.key] = val;
+            // If it's a Drive URL, fetch as base64 via proxy
+            if (isDriveUrl(val)) {
+              loadPromises.push(
+                fetchDriveImageAsBase64(val).then(base64 => {
+                  if (base64) {
+                    photoData[ft.key] = base64;
+                  }
+                })
+              );
+            } else {
+              photoData[ft.key] = val;
+            }
           }
         });
+
+        // Wait for all Drive images to be fetched
+        await Promise.all(loadPromises);
+
         console.log('[PREVIEW] Total photos found:', Object.keys(photoData).length);
         setPreviewPhotos(photoData);
 
@@ -601,13 +639,27 @@ const CreateKlipingScreen: React.FC = () => {
           if (photos) {
             const photoData: { [key: string]: string } = {};
             let count = 0;
+            const loadPromises: Promise<void>[] = [];
+
             FOTO_TYPES.forEach(ft => {
               const val = (photos as any)[ft.key];
               if (val) {
-                photoData[ft.key] = val;
                 count++;
+                // Convert Drive URLs to base64 for display and re-save
+                if (isDriveUrl(val)) {
+                  loadPromises.push(
+                    fetchDriveImageAsBase64(val).then(() => {
+                      // Store the original Drive URL (not base64) so it won't re-upload
+                      photoData[ft.key] = val;
+                    })
+                  );
+                } else {
+                  photoData[ft.key] = val;
+                }
               }
             });
+
+            await Promise.all(loadPromises);
             loadedMesinFotos[mesin] = photoData;
 
             // Update count
@@ -1175,7 +1227,7 @@ const CreateKlipingScreen: React.FC = () => {
                       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
                         <button
                           type="button"
-                          onClick={() => setPreviewImage(fotoValue)}
+                          onClick={() => handleShowPreview(fotoValue)}
                           style={{
                             flex: 1,
                             padding: '12px',

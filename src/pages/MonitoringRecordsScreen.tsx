@@ -5,6 +5,7 @@ import { MonitoringRecord, getMonitoringRecords, getMonitoringRecordsWithPhotos,
 import { authService } from '../utils/authService';
 import { exportMonitoringToExcel, exportMonitoringToPDF, exportAllMonitoringToExcel, getUserFullName } from '../utils/monitoringExport';
 import { PLANTS } from '../constants/AppConstants';
+import { isDriveUrl, fetchDriveImageAsBase64 } from '../utils/googleApi';
 
 interface LocationState {
   selectedPlant: string;
@@ -207,6 +208,21 @@ const MonitoringRecordsScreen: React.FC = () => {
         editMode: true
       }
     });
+  };
+
+  // Helper to show photo preview - converts Drive URLs to base64 via proxy
+  const handleShowPreview = async (photoUrl: string) => {
+    if (!isDriveUrl(photoUrl)) {
+      setPreviewImage(photoUrl);
+      return;
+    }
+    setPreviewImage(null); // trigger loading
+    const base64 = await fetchDriveImageAsBase64(photoUrl);
+    if (base64) {
+      setPreviewImage(base64);
+    } else {
+      setPreviewImage(photoUrl); // fallback
+    }
   };
 
   const handlePreview = async (group: MonitoringRecord[]) => {
@@ -955,7 +971,7 @@ const MonitoringRecordsScreen: React.FC = () => {
                         {record.foto_url && (
                           <div>
                             <button
-                              onClick={() => setPreviewImage(record.foto_url)}
+                              onClick={() => handleShowPreview(record.foto_url!)}
                               style={{
                                 padding: '8px 16px',
                                 background: '#3b82f6',

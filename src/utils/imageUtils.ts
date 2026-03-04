@@ -1,14 +1,17 @@
-import { getDriveDirectUrl, isDriveUrl } from './googleApi';
+import { getDriveDirectUrl, isDriveUrl, fetchDriveImageAsBase64 } from './googleApi';
 
 /**
- * Fetch an image URL as a blob URL for reliable cross-origin loading.
- * Converts Drive URLs to lh3 format first for CORS support.
+ * Fetch a Drive image as base64 data URL via Apps Script proxy.
+ * For non-Drive URLs, fetch as blob and create object URL.
  */
-const fetchAsObjectUrl = async (imageUrl: string): Promise<string | null> => {
+const fetchAsBase64OrObjectUrl = async (imageUrl: string): Promise<string | null> => {
+  // Use proxy for Drive URLs
+  if (isDriveUrl(imageUrl)) {
+    return fetchDriveImageAsBase64(imageUrl);
+  }
+  // For other URLs, try direct fetch as object URL
   try {
-    // Ensure we use the lh3 direct URL for Drive images
-    const url = isDriveUrl(imageUrl) ? getDriveDirectUrl(imageUrl) : imageUrl;
-    const response = await fetch(url, { mode: 'cors' });
+    const response = await fetch(imageUrl, { mode: 'cors' });
     if (!response.ok) return null;
     const blob = await response.blob();
     return URL.createObjectURL(blob);
@@ -57,9 +60,17 @@ export const cropImageToSquare = (imageUrl: string): Promise<string> => {
       reject(new Error('Failed to load image'));
     };
 
-    // For Drive URLs, fetch as blob first to avoid CORS issues
-    if (isDriveUrl(imageUrl) || (imageUrl.startsWith('https://') && !imageUrl.startsWith('data:'))) {
-      const objectUrl = await fetchAsObjectUrl(imageUrl);
+    // For Drive URLs, fetch via proxy to get base64
+    if (isDriveUrl(imageUrl)) {
+      const base64 = await fetchAsBase64OrObjectUrl(imageUrl);
+      if (base64) {
+        img.src = base64;
+      } else {
+        // Fallback: try lh3 direct URL (may fail CORS)
+        img.src = getDriveDirectUrl(imageUrl);
+      }
+    } else if (imageUrl.startsWith('https://') && !imageUrl.startsWith('data:')) {
+      const objectUrl = await fetchAsBase64OrObjectUrl(imageUrl);
       if (objectUrl) {
         img.src = objectUrl;
         // Clean up object URL after load
@@ -74,8 +85,7 @@ export const cropImageToSquare = (imageUrl: string): Promise<string> => {
           if (origOnerror) (origOnerror as any).call(this, e);
         };
       } else {
-        // Fallback: try direct URL
-        img.src = getDriveDirectUrl(imageUrl);
+        img.src = imageUrl;
       }
     } else {
       img.src = imageUrl;

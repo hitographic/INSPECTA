@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import { KlipingRecord } from '../types/database';
-import { gGet, getDriveDirectUrl, isDriveUrl } from './googleApi';
+import { gGet, getDriveDirectUrl, isDriveUrl, fetchDriveImageAsBase64 } from './googleApi';
 import { requestQueue } from './requestQueue';
 
 const fetchRecordPhotos = async (recordId: string): Promise<any> => {
@@ -31,13 +31,19 @@ const fetchRecordPhotos = async (recordId: string): Promise<any> => {
 
 /**
  * Fetch an image from a URL and convert to base64 data URL.
- * Works with Google Drive lh3 URLs and other image URLs.
+ * For Drive URLs, uses Apps Script proxy to bypass CORS.
  */
 const fetchImageAsBase64 = async (url: string): Promise<string | null> => {
   if (!url || typeof url !== 'string' || url.trim() === '') return null;
   // If already base64, return as-is
   if (url.startsWith('data:image')) return url;
   
+  // Use Apps Script proxy for Drive/GCS URLs (avoids CORS)
+  if (isDriveUrl(url)) {
+    return fetchDriveImageAsBase64(url);
+  }
+  
+  // For non-Drive URLs, try direct fetch
   try {
     const response = await fetch(url, { mode: 'cors' });
     if (!response.ok) return null;
@@ -169,7 +175,7 @@ const processImagesInBatch = async (
   fotoKey: string
 ): Promise<Map<number, ArrayBuffer>> => {
   const imageMap = new Map<number, ArrayBuffer>();
-  const BATCH_SIZE = 5;
+  const BATCH_SIZE = 3;
 
   for (let i = 0; i < records.length; i += BATCH_SIZE) {
     const batch = records.slice(i, i + BATCH_SIZE);
@@ -179,10 +185,9 @@ const processImagesInBatch = async (
       if (!fotoData || typeof fotoData !== 'string' || fotoData.trim() === '') return;
       
       try {
-        // If it's a Drive URL, fetch and convert to base64 first
-        if (isDriveUrl(fotoData) || fotoData.startsWith('https://')) {
-          const driveUrl = getDriveDirectUrl(fotoData);
-          const base64Result = await fetchImageAsBase64(driveUrl);
+        // If it's a Drive URL or any https URL, fetch via proxy/fetch and convert to base64
+        if (isDriveUrl(fotoData) || (fotoData.startsWith('https://') && !fotoData.startsWith('data:'))) {
+          const base64Result = await fetchImageAsBase64(fotoData);
           if (!base64Result) return;
           fotoData = base64Result;
         }

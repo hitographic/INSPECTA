@@ -178,6 +178,9 @@ function handleRequest(e) {
       case 'getPhotoUrl':
         result = handleGetPhotoUrl(params);
         break;
+      case 'getPhotoBase64':
+        result = handleGetPhotoBase64(params);
+        break;
 
       // ===== GENERIC CRUD (for MasterDataManagement, updateStatus, etc.) =====
       case 'get':
@@ -1164,12 +1167,18 @@ function handleGetAuditLogs(params) {
  */
 function extractDriveFileId(url) {
   if (!url || typeof url !== 'string') return null;
+  // Format: https://lh3.googleusercontent.com/d/FILE_ID
+  var matchLh3 = url.match(/googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/);
+  if (matchLh3) return matchLh3[1];
   // Format: https://drive.google.com/uc?export=view&id=FILE_ID
   var match1 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
   if (match1) return match1[1];
   // Format: https://drive.google.com/file/d/FILE_ID/view
   var match2 = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
   if (match2) return match2[1];
+  // Format: https://drive.google.com/thumbnail?id=FILE_ID
+  var match3 = url.match(/thumbnail\?id=([a-zA-Z0-9_-]+)/);
+  if (match3) return match3[1];
   // If it's a plain file ID (long alphanumeric string)
   if (url.length > 20 && !/[\/\:\.?&]/.test(url)) return url;
   return null;
@@ -1196,7 +1205,7 @@ function deleteRecordPhotos(record, photoFields) {
   if (!record) return;
   for (var i = 0; i < photoFields.length; i++) {
     var url = record[photoFields[i]];
-    if (url && typeof url === 'string' && url.indexOf('drive.google.com') !== -1) {
+    if (url && typeof url === 'string' && (url.indexOf('drive.google.com') !== -1 || url.indexOf('googleusercontent.com') !== -1)) {
       deleteDriveFile(url);
     }
   }
@@ -1256,6 +1265,35 @@ function handleGetPhotoUrl(params) {
     return {
       viewUrl: 'https://drive.google.com/file/d/' + fileId + '/view',
       directUrl: 'https://drive.google.com/uc?export=view&id=' + fileId
+    };
+  } catch (error) {
+    return { error: error.toString() };
+  }
+}
+
+/**
+ * Get photo as base64 from Google Drive. Used as a CORS proxy.
+ * Accepts either a fileId or a full URL (lh3/drive).
+ */
+function handleGetPhotoBase64(params) {
+  try {
+    var fileId = params.fileId;
+    // If a URL was passed instead of a file ID, extract the ID
+    if (!fileId && params.url) {
+      fileId = extractDriveFileId(params.url);
+    }
+    if (!fileId) return { error: 'Missing fileId or url' };
+    
+    var file = DriveApp.getFileById(fileId);
+    var blob = file.getBlob();
+    var mimeType = blob.getContentType();
+    var base64 = Utilities.base64Encode(blob.getBytes());
+    
+    return {
+      success: true,
+      base64: 'data:' + mimeType + ';base64,' + base64,
+      mimeType: mimeType,
+      fileName: file.getName()
     };
   } catch (error) {
     return { error: error.toString() };

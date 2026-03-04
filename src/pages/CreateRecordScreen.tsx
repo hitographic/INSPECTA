@@ -7,6 +7,7 @@ import { CameraManager } from '../utils/camera';
 import { ArrowLeft, Camera, ChevronLeft, ChevronRight, X, Upload, Eye } from 'lucide-react';
 import { getBagianForLine } from '../utils/masterData';
 import type { Bagian } from '../utils/masterData';
+import { isDriveUrl, fetchDriveImageAsBase64 } from '../utils/googleApi';
 
 // Helper function to get current date and time in GMT+7 (WIB) timezone
 const getIndonesiaDateTime = (): { date: string; time: string; datetime: Date } => {
@@ -74,6 +75,22 @@ export default function CreateRecordScreen() {
   const cameraManager = useRef(new CameraManager());
   const uploadBeforeRef = useRef<HTMLInputElement>(null);
   const uploadAfterRef = useRef<HTMLInputElement>(null);
+
+  // Helper to show photo preview - converts Drive URLs to base64 via proxy
+  const handleShowPreview = async (photoUrl: string) => {
+    if (!photoUrl) return;
+    if (!isDriveUrl(photoUrl)) {
+      setPreviewImage(photoUrl);
+      return;
+    }
+    setPreviewImage(null);
+    const base64 = await fetchDriveImageAsBase64(photoUrl);
+    if (base64) {
+      setPreviewImage(base64);
+    } else {
+      setPreviewImage(photoUrl);
+    }
+  };
 
   useEffect(() => {
     if (isLoading) return;
@@ -978,7 +995,7 @@ export default function CreateRecordScreen() {
                       <button
                         type="button"
                         className="preview-button"
-                        onClick={() => setPreviewImage(photoBefore)}
+                        onClick={() => handleShowPreview(photoBefore)}
                         style={{ flex: 1 }}
                       >
                         <Eye size={16} />
@@ -1067,7 +1084,7 @@ export default function CreateRecordScreen() {
                       <button
                         type="button"
                         className="preview-button"
-                        onClick={() => setPreviewImage(photoAfter)}
+                        onClick={() => handleShowPreview(photoAfter)}
                         style={{ flex: 1 }}
                       >
                         <Eye size={16} />
