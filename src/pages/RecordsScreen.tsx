@@ -72,11 +72,11 @@ export default function RecordsScreen() {
     let filtered = records;
 
     if (searchDate) {
-      filtered = filtered.filter(record => record.tanggal === searchDate);
+      filtered = filtered.filter(record => String(record.tanggal) === searchDate);
     }
 
     if (searchLine) {
-      filtered = filtered.filter(record => record.line === searchLine);
+      filtered = filtered.filter(record => String(record.line) === String(searchLine));
     }
 
     setFilteredRecords(filtered);

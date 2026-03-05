@@ -92,7 +92,7 @@ const MonitoringRecordsScreen: React.FC = () => {
       filtered = filtered.filter(r => r.tanggal <= endDate);
     }
     if (selectedLines.length > 0) {
-      filtered = filtered.filter(r => selectedLines.includes(r.line));
+      filtered = filtered.filter(r => selectedLines.includes(String(r.line)));
     }
 
     setFilteredRecords(filtered);

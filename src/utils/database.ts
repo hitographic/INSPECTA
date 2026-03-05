@@ -34,10 +34,10 @@ class DatabaseManager {
   private mapRecord(record: any): SanitationRecord {
     return {
       id: record.id,
-      plant: record.plant,
-      line: record.line,
-      area: record.area,
-      bagian: record.bagian,
+      plant: String(record.plant || ''),
+      line: String(record.line || ''),
+      area: String(record.area || ''),
+      bagian: String(record.bagian || ''),
       photoBeforeUri: getDriveDirectUrl(record.foto_sebelum),
       photoAfterUri: getDriveDirectUrl(record.foto_sesudah),
       foto_sebelum: getDriveDirectUrl(record.foto_sebelum),

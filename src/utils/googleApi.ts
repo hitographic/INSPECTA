@@ -295,13 +295,21 @@ export function normalizeDate(val: any): string {
 }
 
 /**
- * Normalize all 'tanggal' fields in an array of records
+ * Normalize all 'tanggal' fields in an array of records.
+ * Also stringify fields that Google Sheets may return as numbers (line, shift, pengamatan_ke, data_number).
  */
 export function normalizeDatesInRecords<T extends Record<string, any>>(records: T[]): T[] {
+  const STRINGIFY_FIELDS = ['line', 'shift', 'pengamatan_ke', 'data_number', 'regu'];
   return records.map(r => {
-    if (r.tanggal) {
-      return { ...r, tanggal: normalizeDate(r.tanggal) };
+    const patched: any = { ...r };
+    if (patched.tanggal) {
+      patched.tanggal = normalizeDate(patched.tanggal);
     }
-    return r;
+    for (const f of STRINGIFY_FIELDS) {
+      if (patched[f] !== undefined && patched[f] !== null) {
+        patched[f] = String(patched[f]);
+      }
+    }
+    return patched as T;
   });
 }
