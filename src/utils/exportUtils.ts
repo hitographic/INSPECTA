@@ -168,7 +168,7 @@ const fetchImageAsObjectUrl = async (url: string): Promise<string | null> => {
   }
 };
 
-const resizeImage = (imageUrlOrBase64: string, targetWidth: number = 300, targetHeight: number = 300, quality: number = 0.75): Promise<string> => {
+const resizeImage = (imageUrlOrBase64: string, targetWidth: number = 300, targetHeight: number = 300, quality: number = 0.92): Promise<string> => {
   return new Promise(async (resolve) => {
     const cacheKey = `${hashBase64(imageUrlOrBase64)}_${targetWidth}_${targetHeight}_${quality}`;
 
@@ -193,7 +193,7 @@ const resizeImage = (imageUrlOrBase64: string, targetWidth: number = 300, target
       canvas.height = targetHeight;
 
       ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'medium';
+      ctx.imageSmoothingQuality = 'high';
 
       ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
       const resized = canvas.toDataURL('image/jpeg', quality);
@@ -402,7 +402,7 @@ export const exportToExcel = async (records: SanitationRecord[]): Promise<boolea
 
     // STEP 2: Pre-fetch ALL images in parallel (this is the biggest bottleneck)
     console.log('[EXPORT EXCEL] Step 2: Pre-fetching all images...');
-    const imageMap = await prefetchAllImages(recordsWithPhotos, 265, 265);
+    const imageMap = await prefetchAllImages(recordsWithPhotos, 300, 300);
     console.log(`[EXPORT EXCEL] All images loaded in ${((performance.now() - startTime) / 1000).toFixed(1)}s`);
 
     // STEP 2b: Pre-compute ArrayBuffers for Excel (avoids 80x base64ToBuffer in loop)
@@ -768,9 +768,9 @@ export const exportToPDF = async (records: SanitationRecord[]): Promise<boolean>
 
     console.log(`[EXPORT PDF] Loaded ${recordsWithPhotos.length} records in ${((performance.now() - startTime) / 1000).toFixed(1)}s`);
 
-    // STEP 2: Pre-fetch ALL images in parallel (PDF uses 200px, smaller since display is ~50mm)
+    // STEP 2: Pre-fetch ALL images in parallel
     console.log('[EXPORT PDF] Step 2: Pre-fetching all images...');
-    const imageMap = await prefetchAllImages(recordsWithPhotos, 200, 200);
+    const imageMap = await prefetchAllImages(recordsWithPhotos, 300, 300);
     console.log(`[EXPORT PDF] All images loaded in ${((performance.now() - startTime) / 1000).toFixed(1)}s`);
 
     // STEP 3: Pre-fetch all master data in parallel
