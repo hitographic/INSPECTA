@@ -132,6 +132,24 @@ class DatabaseManager {
     }
   }
 
+  /**
+   * Get records by plant WITH photo URIs included (for export).
+   * This avoids the need to re-fetch each record individually.
+   */
+  async getRecordsByPlantWithPhotos(plant: string, status?: 'draft' | 'completed', limit?: number): Promise<SanitationRecord[]> {
+    try {
+      const params: Record<string, string> = { plant };
+      if (status) params.status = status;
+      else params.excludeStatus = 'draft';
+      if (limit) params.limit = String(limit);
+      const data = await gGet('getSanitationRecords', params);
+      return (data || []).map((r: any) => this.mapRecord(r));
+    } catch (error) {
+      log('Failed to fetch records by plant with photos:', error);
+      return [];
+    }
+  }
+
   async getRecordById(id: number): Promise<SanitationRecord | null> {
     try {
       const data = await gGet('getSanitationRecordById', { id: String(id) });
@@ -228,6 +246,7 @@ export const insertRecord = (record: Omit<SanitationRecord, 'id'>) => dbManager.
 export const getAllRecords = () => dbManager.getAllRecords();
 export const getRecordsMetadata = (plant: string, line: string, tanggal: string) => dbManager.getRecordsMetadata(plant, line, tanggal);
 export const getRecordsByPlant = (plant: string, status?: 'draft' | 'completed', limit?: number) => dbManager.getRecordsByPlant(plant, status, limit);
+export const getRecordsByPlantWithPhotos = (plant: string, status?: 'draft' | 'completed', limit?: number) => dbManager.getRecordsByPlantWithPhotos(plant, status, limit);
 export const getRecordById = (id: number) => dbManager.getRecordById(id);
 export const getRecordsByDate = (date: string) => dbManager.getRecordsByDate(date);
 export const updateRecord = (id: number, record: Partial<SanitationRecord>) => dbManager.updateRecord(id, record);

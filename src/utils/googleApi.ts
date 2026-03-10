@@ -190,6 +190,7 @@ export function extractDriveFileId(url: string): string | null {
  * Includes in-memory caching to avoid redundant requests.
  */
 const _photoBase64Cache = new Map<string, string>();
+const _photoBase64InFlight = new Map<string, Promise<string | null>>();
 
 export async function fetchDriveImageAsBase64(urlOrFileId: string): Promise<string | null> {
   if (!urlOrFileId) return null;
@@ -202,12 +203,29 @@ export async function fetchDriveImageAsBase64(urlOrFileId: string): Promise<stri
   if (_photoBase64Cache.has(cacheKey)) {
     return _photoBase64Cache.get(cacheKey)!;
   }
+
+  // Deduplicate in-flight requests (prevents fetching same image multiple times)
+  if (_photoBase64InFlight.has(cacheKey)) {
+    return _photoBase64InFlight.get(cacheKey)!;
+  }
+
+  const fetchPromise = _fetchDriveImageAsBase64Internal(urlOrFileId, cacheKey);
+  _photoBase64InFlight.set(cacheKey, fetchPromise);
   
+  try {
+    return await fetchPromise;
+  } finally {
+    _photoBase64InFlight.delete(cacheKey);
+  }
+}
+
+async function _fetchDriveImageAsBase64Internal(urlOrFileId: string, cacheKey: string): Promise<string | null> {
   const fileId = extractDriveFileId(urlOrFileId);
   if (!fileId) return null;
 
   const cacheResult = (result: string) => {
-    if (_photoBase64Cache.size > 100) {
+    // Larger cache for export: keep up to 200 entries
+    if (_photoBase64Cache.size > 200) {
       const firstKey = _photoBase64Cache.keys().next().value;
       if (firstKey) _photoBase64Cache.delete(firstKey);
     }

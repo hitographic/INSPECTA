@@ -1,9 +1,45 @@
 import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import { SanitationRecord } from '../types/database';
-import { getRecordById } from './database';
+import { getRecordById, getRecordsByPlantWithPhotos } from './database';
 import { gGet, isDriveUrl, fetchDriveImageAsBase64 } from './googleApi';
 import { getAreas, getBagianByAreaName } from './masterData';
+
+// ============================================================
+// PERFORMANCE: In-memory caches for master data & images
+// These avoid repeated HTTP round-trips during a single export.
+// ============================================================
+let _cachedAreas: any[] | null = null;
+let _cachedAreasTimestamp = 0;
+const _bagianCache = new Map<string, any[]>();
+let _cachedSupervisors: any[] | null = null;
+
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+const getCachedAreas = async () => {
+  if (_cachedAreas && Date.now() - _cachedAreasTimestamp < CACHE_TTL) return _cachedAreas;
+  _cachedAreas = await getAreas();
+  _cachedAreasTimestamp = Date.now();
+  return _cachedAreas;
+};
+
+const getCachedBagian = async (areaName: string) => {
+  if (_bagianCache.has(areaName)) return _bagianCache.get(areaName)!;
+  const result = await getBagianByAreaName(areaName);
+  _bagianCache.set(areaName, result);
+  return result;
+};
+
+const getCachedSupervisors = async () => {
+  if (_cachedSupervisors) return _cachedSupervisors;
+  try {
+    const supervisors = await gGet('get', { table: 'supervisors' });
+    _cachedSupervisors = Array.isArray(supervisors) ? supervisors : [];
+  } catch {
+    _cachedSupervisors = [];
+  }
+  return _cachedSupervisors;
+};
 
 // Convert base64 image to buffer for ExcelJS
 const base64ToBuffer = (base64: string): ArrayBuffer => {
@@ -58,11 +94,10 @@ const formatIndonesianDate = (dateString: string): string => {
   return `${day} ${month} ${year}`;
 };
 
-// Get supervisor name for plant
+// Get supervisor name for plant (cached)
 const getSupervisorName = async (plant: string): Promise<string> => {
   try {
-    const supervisors = await gGet('get', { table: 'supervisors' });
-    const arr = Array.isArray(supervisors) ? supervisors : [];
+    const arr = await getCachedSupervisors();
     const found = arr.find((s: any) => s.plant === plant);
     return found?.supervisor_name || 'Unknown';
   } catch (error) {
@@ -77,13 +112,13 @@ const getPlantNumber = (plant: string): string => {
   return match ? match[1] : '1';
 };
 
-// Sort areas by display_order from database
+// Sort areas by display_order from database (cached)
 const sortAreasByDisplayOrder = async (areaNames: string[]): Promise<string[]> => {
   try {
-    const areas = await getAreas();
+    const areas = await getCachedAreas();
     const areaOrderMap: { [name: string]: number } = {};
 
-    areas.forEach(area => {
+    areas.forEach((area: any) => {
       areaOrderMap[area.name] = area.display_order;
     });
 
@@ -105,7 +140,8 @@ const imageCache = new Map<string, string>();
 // Generate unique hash for base64 string
 const hashBase64 = (str: string): string => {
   let hash = 0;
-  for (let i = 0; i < str.length; i++) {
+  const len = Math.min(str.length, 1000); // Only hash first 1000 chars for speed
+  for (let i = 0; i < len; i++) {
     const char = str.charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
     hash = hash & hash;
@@ -132,9 +168,9 @@ const fetchImageAsObjectUrl = async (url: string): Promise<string | null> => {
   }
 };
 
-const resizeImage = (imageUrlOrBase64: string, targetWidth: number = 300, targetHeight: number = 300): Promise<string> => {
+const resizeImage = (imageUrlOrBase64: string, targetWidth: number = 300, targetHeight: number = 300, quality: number = 0.75): Promise<string> => {
   return new Promise(async (resolve) => {
-    const cacheKey = `${hashBase64(imageUrlOrBase64)}_${targetWidth}_${targetHeight}`;
+    const cacheKey = `${hashBase64(imageUrlOrBase64)}_${targetWidth}_${targetHeight}_${quality}`;
 
     if (imageCache.has(cacheKey)) {
       resolve(imageCache.get(cacheKey)!);
@@ -157,10 +193,10 @@ const resizeImage = (imageUrlOrBase64: string, targetWidth: number = 300, target
       canvas.height = targetHeight;
 
       ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
+      ctx.imageSmoothingQuality = 'medium';
 
       ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
-      const resized = canvas.toDataURL('image/jpeg', 0.92);
+      const resized = canvas.toDataURL('image/jpeg', quality);
       imageCache.set(cacheKey, resized);
       resolve(resized);
     };
@@ -194,6 +230,154 @@ const resizeImage = (imageUrlOrBase64: string, targetWidth: number = 300, target
 // Note: created_by in database already stores full_name string, not ID
 // This function is kept for backward compatibility but not actively used
 
+// ============================================================
+// PERFORMANCE HELPERS
+// ============================================================
+
+/**
+ * Batch-load full records (with photos).
+ * Strategy:
+ * 1. If records already have photoBeforeUri/photoAfterUri, use them directly (no extra fetch).
+ * 2. Otherwise, try a single bulk fetch via getRecordsByPlantWithPhotos (1 HTTP call per plant).
+ * 3. Fallback: fetch individually in parallel batches.
+ */
+const CONCURRENCY_LIMIT = 10; // Max parallel requests
+
+async function batchLoadRecords(records: SanitationRecord[]): Promise<SanitationRecord[]> {
+  // Check if records already have photo URIs (no need to re-fetch)
+  const recordsWithPhotos = records.filter(r => r.photoBeforeUri && r.photoAfterUri);
+  if (recordsWithPhotos.length > 0) {
+    console.log(`[EXPORT] ${recordsWithPhotos.length}/${records.length} records already have photos, skipping re-fetch`);
+    return recordsWithPhotos;
+  }
+
+  // Try single batch fetch: group by plant, fetch all at once
+  const plantNames = [...new Set(records.map(r => r.plant))];
+  const recordIds = new Set(records.filter(r => r.id).map(r => r.id!));
+
+  console.log(`[EXPORT] Fetching records with photos for ${plantNames.length} plant(s) in single batch...`);
+
+  try {
+    const batchResults = await Promise.all(
+      plantNames.map(plant => getRecordsByPlantWithPhotos(plant))
+    );
+    const allRecords = batchResults.flat();
+    // Filter to only include records that match the requested IDs
+    const filtered = allRecords.filter(
+      r => r.id && recordIds.has(r.id) && r.photoBeforeUri && r.photoAfterUri
+    );
+
+    if (filtered.length > 0) {
+      console.log(`[EXPORT] Batch fetch returned ${filtered.length} records with photos`);
+      return filtered;
+    }
+  } catch (error) {
+    console.warn('[EXPORT] Batch fetch failed, falling back to individual fetch:', error);
+  }
+
+  // Fallback: fetch individually in parallel batches
+  console.log(`[EXPORT] Fallback: fetching ${records.length} records individually (batches of ${CONCURRENCY_LIMIT})...`);
+  const validRecords = records.filter(r => r.id);
+  const results: (SanitationRecord | null)[] = new Array(validRecords.length).fill(null);
+
+  for (let i = 0; i < validRecords.length; i += CONCURRENCY_LIMIT) {
+    const batch = validRecords.slice(i, i + CONCURRENCY_LIMIT);
+    const batchResults = await Promise.all(
+      batch.map(record => getRecordById(record.id!).catch(() => null))
+    );
+    batchResults.forEach((result, idx) => {
+      results[i + idx] = result;
+    });
+  }
+
+  return results.filter(
+    (r): r is SanitationRecord => r !== null && !!r.photoBeforeUri && !!r.photoAfterUri
+  );
+}
+
+/**
+ * Pre-fetch and resize ALL images for a set of records in parallel.
+ * Returns a Map<photoUri, resizedBase64> so the export loop doesn't need to await each image.
+ */
+async function prefetchAllImages(
+  records: SanitationRecord[],
+  targetWidth: number = 300,
+  targetHeight: number = 300
+): Promise<Map<string, string>> {
+  const imageMap = new Map<string, string>();
+  const allUris = new Set<string>();
+
+  for (const record of records) {
+    if (record.photoBeforeUri) allUris.add(record.photoBeforeUri);
+    if (record.photoAfterUri) allUris.add(record.photoAfterUri);
+  }
+
+  const uriArray = Array.from(allUris);
+  console.log(`[EXPORT] Pre-fetching ${uriArray.length} unique images in parallel batches of ${CONCURRENCY_LIMIT}...`);
+
+  for (let i = 0; i < uriArray.length; i += CONCURRENCY_LIMIT) {
+    const batch = uriArray.slice(i, i + CONCURRENCY_LIMIT);
+    const batchResults = await Promise.all(
+      batch.map(async (uri) => {
+        try {
+          const resized = await resizeImage(uri, targetWidth, targetHeight);
+          return { uri, resized };
+        } catch {
+          return { uri, resized: uri };
+        }
+      })
+    );
+    batchResults.forEach(({ uri, resized }) => imageMap.set(uri, resized));
+    console.log(`[EXPORT] Images fetched: ${Math.min(i + CONCURRENCY_LIMIT, uriArray.length)}/${uriArray.length}`);
+  }
+
+  return imageMap;
+}
+
+/**
+ * Pre-compute ArrayBuffer for all images (needed for ExcelJS).
+ * This avoids calling base64ToBuffer 80 times inside the export loop.
+ */
+function precomputeImageBuffers(imageMap: Map<string, string>): Map<string, ArrayBuffer> {
+  const bufferMap = new Map<string, ArrayBuffer>();
+  for (const [uri, base64] of imageMap) {
+    if (base64.startsWith('data:')) {
+      try {
+        bufferMap.set(uri, base64ToBuffer(base64));
+      } catch {
+        // skip failed conversions
+      }
+    }
+  }
+  return bufferMap;
+}
+
+/**
+ * Pre-load all bagian ordering info for a set of area names in parallel.
+ */
+async function prefetchBagianOrder(areaNames: string[]): Promise<Map<string, Map<string, number>>> {
+  const result = new Map<string, Map<string, number>>();
+  const uniqueAreas = [...new Set(areaNames)];
+
+  const batchResults = await Promise.all(
+    uniqueAreas.map(async (area) => {
+      try {
+        const bagianList = await getCachedBagian(area);
+        const orderMap = new Map<string, number>();
+        bagianList.forEach((b: any) => {
+          orderMap.set(b.name, b.display_order);
+        });
+        return { area, orderMap };
+      } catch {
+        return { area, orderMap: new Map<string, number>() };
+      }
+    })
+  );
+
+  batchResults.forEach(({ area, orderMap }) => result.set(area, orderMap));
+  return result;
+}
+
 
 export const exportToExcel = async (records: SanitationRecord[]): Promise<boolean> => {
   try {
@@ -202,26 +386,39 @@ export const exportToExcel = async (records: SanitationRecord[]): Promise<boolea
       return false;
     }
 
-    console.log('Loading full records with photos for export...');
+    console.log('[EXPORT EXCEL] Starting optimized export...');
+    const startTime = performance.now();
 
-    // Batch load records in parallel for better performance
-    const recordPromises = records
-      .filter(r => r.id)
-      .map(record => getRecordById(record.id!));
-
-    const loadedRecords = await Promise.all(recordPromises);
-
-    const recordsWithPhotos: SanitationRecord[] = loadedRecords
-      .filter(fullRecord =>
-        fullRecord && fullRecord.photoBeforeUri && fullRecord.photoAfterUri
-      ) as SanitationRecord[];
+    // STEP 1: Batch load all records with photos (parallel, controlled concurrency)
+    console.log('[EXPORT EXCEL] Step 1: Loading full records...');
+    const recordsWithPhotos = await batchLoadRecords(records);
 
     if (recordsWithPhotos.length === 0) {
       alert('Tidak ada data dengan foto lengkap untuk diekspor');
       return false;
     }
 
-    console.log('Loaded', recordsWithPhotos.length, 'records with complete photos');
+    console.log(`[EXPORT EXCEL] Loaded ${recordsWithPhotos.length} records in ${((performance.now() - startTime) / 1000).toFixed(1)}s`);
+
+    // STEP 2: Pre-fetch ALL images in parallel (this is the biggest bottleneck)
+    console.log('[EXPORT EXCEL] Step 2: Pre-fetching all images...');
+    const imageMap = await prefetchAllImages(recordsWithPhotos, 265, 265);
+    console.log(`[EXPORT EXCEL] All images loaded in ${((performance.now() - startTime) / 1000).toFixed(1)}s`);
+
+    // STEP 2b: Pre-compute ArrayBuffers for Excel (avoids 80x base64ToBuffer in loop)
+    console.log('[EXPORT EXCEL] Step 2b: Pre-computing image buffers...');
+    const imageBufferMap = precomputeImageBuffers(imageMap);
+    console.log(`[EXPORT EXCEL] ${imageBufferMap.size} buffers ready in ${((performance.now() - startTime) / 1000).toFixed(1)}s`);
+
+    // STEP 3: Pre-fetch all master data in parallel
+    console.log('[EXPORT EXCEL] Step 3: Loading master data...');
+    const allAreaNames = [...new Set(recordsWithPhotos.map(r => r.area))];
+    const [bagianOrderMap] = await Promise.all([
+      prefetchBagianOrder(allAreaNames),
+      getCachedAreas(),       // warm cache
+      getCachedSupervisors(), // warm cache
+    ]);
+    console.log(`[EXPORT EXCEL] Master data loaded in ${((performance.now() - startTime) / 1000).toFixed(1)}s`);
 
     // Group records by date and plant
     const recordsByDate = recordsWithPhotos.reduce((acc, record) => {
@@ -309,21 +506,14 @@ export const exportToExcel = async (records: SanitationRecord[]): Promise<boolea
       for (const area of sortedAreas) {
         let areaRecords = areaGroups[area];
 
-        // Sort bagian within area by display_order
-        try {
-          const bagianList = await getBagianByAreaName(area);
-          const bagianOrderMap: { [name: string]: number } = {};
-          bagianList.forEach(b => {
-            bagianOrderMap[b.name] = b.display_order;
-          });
-
+        // Sort bagian within area by display_order (using pre-fetched data)
+        const bagianOrder = bagianOrderMap.get(area);
+        if (bagianOrder && bagianOrder.size > 0) {
           areaRecords = areaRecords.sort((a, b) => {
-            const orderA = bagianOrderMap[a.bagian] ?? 999;
-            const orderB = bagianOrderMap[b.bagian] ?? 999;
+            const orderA = bagianOrder.get(a.bagian) ?? 999;
+            const orderB = bagianOrder.get(b.bagian) ?? 999;
             return orderA - orderB;
           });
-        } catch (error) {
-          console.error('Error sorting bagian:', error);
         }
         // Plant info (only for first area)
         if (isFirstArea) {
@@ -434,13 +624,11 @@ keteranganCell.alignment = { wrapText: true, vertical: 'middle' };
             cell.font = { size: 12 }; // Ubah angka ini untuk mengatur ukuran font
           });
 
-          // Add optimized images (300px, high quality)
+          // Add optimized images (using pre-fetched, pre-resized & pre-buffered images)
           try {
-            if (record.photoBeforeUri) {
-              const resizedBefore = await resizeImage(record.photoBeforeUri, 300, 300);
-              const beforeBuffer = base64ToBuffer(resizedBefore);
+            if (record.photoBeforeUri && imageBufferMap.has(record.photoBeforeUri)) {
               const beforeImageId = workbook.addImage({
-                buffer: beforeBuffer,
+                buffer: imageBufferMap.get(record.photoBeforeUri)!,
                 extension: 'jpeg',
               });
 
@@ -451,11 +639,9 @@ keteranganCell.alignment = { wrapText: true, vertical: 'middle' };
               });
             }
 
-            if (record.photoAfterUri) {
-              const resizedAfter = await resizeImage(record.photoAfterUri, 300, 300);
-              const afterBuffer = base64ToBuffer(resizedAfter);
+            if (record.photoAfterUri && imageBufferMap.has(record.photoAfterUri)) {
               const afterImageId = workbook.addImage({
-                buffer: afterBuffer,
+                buffer: imageBufferMap.get(record.photoAfterUri)!,
                 extension: 'jpeg',
               });
               
@@ -535,7 +721,9 @@ const dateStr = new Date().toISOString().split('T')[0];
 
 // Generate nama file dengan plant dan line
 const fileName = `Laporan_Sanitasi_${plantSafe}_${lineSafe}_${dateStr}.xlsx`;
+    console.log(`[EXPORT EXCEL] Worksheet built in ${((performance.now() - startTime) / 1000).toFixed(1)}s, writing buffer...`);
     const buffer = await workbook.xlsx.writeBuffer();
+    console.log(`[EXPORT EXCEL] Buffer written (${(buffer.byteLength / 1024).toFixed(0)} KB) in ${((performance.now() - startTime) / 1000).toFixed(1)}s`);
     const blob = new Blob([buffer], { 
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
     });
@@ -549,6 +737,8 @@ const fileName = `Laporan_Sanitasi_${plantSafe}_${lineSafe}_${dateStr}.xlsx`;
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+
+    console.log(`[EXPORT EXCEL] ✅ Complete in ${((performance.now() - startTime) / 1000).toFixed(1)}s`);
     
     return true;
   } catch (error) {
@@ -564,26 +754,34 @@ export const exportToPDF = async (records: SanitationRecord[]): Promise<boolean>
       return false;
     }
 
-    console.log('Loading full records with photos for PDF export...');
+    console.log('[EXPORT PDF] Starting optimized export...');
+    const startTime = performance.now();
 
-    // Batch load records in parallel for better performance
-    const recordPromises = records
-      .filter(r => r.id)
-      .map(record => getRecordById(record.id!));
-
-    const loadedRecords = await Promise.all(recordPromises);
-
-    const recordsWithPhotos: SanitationRecord[] = loadedRecords
-      .filter(fullRecord =>
-        fullRecord && fullRecord.photoBeforeUri && fullRecord.photoAfterUri
-      ) as SanitationRecord[];
+    // STEP 1: Batch load all records with photos (parallel, controlled concurrency)
+    console.log('[EXPORT PDF] Step 1: Loading full records...');
+    const recordsWithPhotos = await batchLoadRecords(records);
 
     if (recordsWithPhotos.length === 0) {
       alert('Tidak ada data dengan foto lengkap untuk diekspor');
       return false;
     }
 
-    console.log('Loaded', recordsWithPhotos.length, 'records with complete photos for PDF');
+    console.log(`[EXPORT PDF] Loaded ${recordsWithPhotos.length} records in ${((performance.now() - startTime) / 1000).toFixed(1)}s`);
+
+    // STEP 2: Pre-fetch ALL images in parallel (PDF uses 200px, smaller since display is ~50mm)
+    console.log('[EXPORT PDF] Step 2: Pre-fetching all images...');
+    const imageMap = await prefetchAllImages(recordsWithPhotos, 200, 200);
+    console.log(`[EXPORT PDF] All images loaded in ${((performance.now() - startTime) / 1000).toFixed(1)}s`);
+
+    // STEP 3: Pre-fetch all master data in parallel
+    console.log('[EXPORT PDF] Step 3: Loading master data...');
+    const allAreaNames = [...new Set(recordsWithPhotos.map(r => r.area))];
+    const [bagianOrderMap] = await Promise.all([
+      prefetchBagianOrder(allAreaNames),
+      getCachedAreas(),
+      getCachedSupervisors(),
+    ]);
+    console.log(`[EXPORT PDF] Master data loaded in ${((performance.now() - startTime) / 1000).toFixed(1)}s`);
 
     const pdf = new jsPDF('p', 'mm', 'a4'); // Portrait A4
     const pageWidth = pdf.internal.pageSize.getWidth();
@@ -661,21 +859,14 @@ export const exportToPDF = async (records: SanitationRecord[]): Promise<boolean>
       for (const area of sortedAreasPDF) {
         let areaRecords = areaGroups[area];
 
-        // Sort bagian within area by display_order
-        try {
-          const bagianList = await getBagianByAreaName(area);
-          const bagianOrderMap: { [name: string]: number } = {};
-          bagianList.forEach(b => {
-            bagianOrderMap[b.name] = b.display_order;
-          });
-
+        // Sort bagian within area by display_order (using pre-fetched data)
+        const bagianOrder = bagianOrderMap.get(area);
+        if (bagianOrder && bagianOrder.size > 0) {
           areaRecords = areaRecords.sort((a, b) => {
-            const orderA = bagianOrderMap[a.bagian] ?? 999;
-            const orderB = bagianOrderMap[b.bagian] ?? 999;
+            const orderA = bagianOrder.get(a.bagian) ?? 999;
+            const orderB = bagianOrder.get(b.bagian) ?? 999;
             return orderA - orderB;
           });
-        } catch (error) {
-          console.error('Error sorting bagian:', error);
         }
 
         // Calculate space needed for Area + Week + Header + First Data Row
@@ -775,25 +966,29 @@ export const exportToPDF = async (records: SanitationRecord[]): Promise<boolean>
           pdf.text(bagianLines, xPos + 2, yPosition + 8);
           xPos += colWidths[2];
           
-          // Add optimized images (300px, high quality)
+          // Add optimized images (using pre-fetched & pre-resized images)
           try {
             if (record.photoBeforeUri) {
-              const resizedBefore = await resizeImage(record.photoBeforeUri, 300, 300);
-              const imageWidth = 50;  // atur sesuai kebutuhan
-              const imageHeight = 45; // atur sesuai kebutuhan
-              const imageX = xPos + (colWidths[3] - imageWidth) / 2; // Center horizontally
-              const imageY = yPosition + (dataRowHeight - imageHeight) / 2; // Center vertically
-              pdf.addImage(resizedBefore, 'JPEG', imageX, imageY, imageWidth, imageHeight);
+              const resizedBefore = imageMap.get(record.photoBeforeUri) || record.photoBeforeUri;
+              if (resizedBefore.startsWith('data:')) {
+                const imageWidth = 50;  // atur sesuai kebutuhan
+                const imageHeight = 45; // atur sesuai kebutuhan
+                const imageX = xPos + (colWidths[3] - imageWidth) / 2; // Center horizontally
+                const imageY = yPosition + (dataRowHeight - imageHeight) / 2; // Center vertically
+                pdf.addImage(resizedBefore, 'JPEG', imageX, imageY, imageWidth, imageHeight);
+              }
             }
             xPos += colWidths[3];
 
             if (record.photoAfterUri) {
-              const resizedAfter = await resizeImage(record.photoAfterUri, 300, 300);
-              const imageWidth = 50;  // atur sesuai kebutuhan
-              const imageHeight = 45; // atur sesuai kebutuhan
-              const imageX = xPos + (colWidths[4] - imageWidth) / 2; // Center horizontally
-              const imageY = yPosition + (dataRowHeight - imageHeight) / 2; // Center vertically
-              pdf.addImage(resizedAfter, 'JPEG', imageX, imageY, imageWidth, imageHeight);
+              const resizedAfter = imageMap.get(record.photoAfterUri) || record.photoAfterUri;
+              if (resizedAfter.startsWith('data:')) {
+                const imageWidth = 50;  // atur sesuai kebutuhan
+                const imageHeight = 45; // atur sesuai kebutuhan
+                const imageX = xPos + (colWidths[4] - imageWidth) / 2; // Center horizontally
+                const imageY = yPosition + (dataRowHeight - imageHeight) / 2; // Center vertically
+                pdf.addImage(resizedAfter, 'JPEG', imageX, imageY, imageWidth, imageHeight);
+              }
             }
             xPos += colWidths[4];
           } catch (error) {
@@ -920,6 +1115,8 @@ const dateStr = new Date().toISOString().split('T')[0];
 // Generate nama file dengan plant dan line
 const fileName = `Laporan_Sanitasi_${plantSafe}_${lineSafe}_${dateStr}.pdf`;
 pdf.save(fileName);
+
+    console.log(`[EXPORT PDF] ✅ Complete in ${((performance.now() - startTime) / 1000).toFixed(1)}s`);
     
     return true;
   } catch (error) {
