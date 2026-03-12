@@ -234,7 +234,11 @@ export const getKlipingRecords = async (filters?: {
     console.log('[KLIPING] Successfully fetched records:', data?.length || 0);
     console.log('[KLIPING] Sample data:', data?.[0]);
 
-    return data || [];
+    // Normalize tanggal to YYYY-MM-DD (some Supabase configs return datetime strings)
+    return (data || []).map(record => ({
+      ...record,
+      tanggal: record.tanggal ? record.tanggal.substring(0, 10) : record.tanggal
+    }));
   } catch (error) {
     console.error('[KLIPING] Exception in getKlipingRecords:', error);
     return [];
@@ -254,6 +258,9 @@ export const getKlipingRecordById = async (id: string): Promise<KlipingRecord | 
       return null;
     }
 
+    if (data && data.tanggal) {
+      data.tanggal = data.tanggal.substring(0, 10);
+    }
     return data;
   } catch (error) {
     console.error('Error in getKlipingRecordById:', error);
@@ -370,7 +377,10 @@ export const getKlipingRecordsWithPhotos = async (filters?: {
     }
 
     console.log(`[KLIPING] Total fetched: ${allRecords.length} records WITH PHOTOS`);
-    return allRecords;
+    return allRecords.map(record => ({
+      ...record,
+      tanggal: record.tanggal ? record.tanggal.substring(0, 10) : record.tanggal
+    }));
   } catch (error) {
     console.error('[KLIPING] Error in getKlipingRecordsWithPhotos:', error);
     return [];

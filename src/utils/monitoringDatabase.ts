@@ -62,6 +62,7 @@ export const getMonitoringRecords = async (
     if (error) throw error;
     return (data || []).map(record => ({
       ...record,
+      tanggal: record.tanggal ? record.tanggal.substring(0, 10) : record.tanggal,
       foto_url: null
     }));
   } catch (error) {
@@ -85,7 +86,10 @@ export const getMonitoringRecordsWithPhotos = async (
       .order('data_number', { ascending: true });
 
     if (error) throw error;
-    return data || [];
+    return (data || []).map(record => ({
+      ...record,
+      tanggal: record.tanggal ? record.tanggal.substring(0, 10) : record.tanggal
+    }));
   } catch (error) {
     console.error('Error fetching monitoring records with photos:', error);
     throw error;
