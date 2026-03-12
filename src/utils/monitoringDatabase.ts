@@ -40,27 +40,46 @@ export const getMonitoringRecords = async (
   }
 ): Promise<MonitoringRecord[]> => {
   try {
-    let query = supabase
-      .from('monitoring_records')
-      .select('id, plant, tanggal, line, area, data_number, keterangan, status, created_by, created_at, updated_at')
-      .eq('plant', plant)
-      .order('tanggal', { ascending: false })
-      .order('data_number', { ascending: true });
+    const BATCH_SIZE = 1000;
+    let allRecords: any[] = [];
+    let offset = 0;
+    let hasMore = true;
 
-    if (filters?.startDate) {
-      query = query.gte('tanggal', filters.startDate);
-    }
-    if (filters?.endDate) {
-      query = query.lte('tanggal', filters.endDate);
-    }
-    if (filters?.lines && filters.lines.length > 0) {
-      query = query.in('line', filters.lines);
+    while (hasMore) {
+      let query = supabase
+        .from('monitoring_records')
+        .select('id, plant, tanggal, line, area, data_number, keterangan, status, created_by, created_at, updated_at')
+        .eq('plant', plant)
+        .order('tanggal', { ascending: false })
+        .order('data_number', { ascending: true })
+        .range(offset, offset + BATCH_SIZE - 1);
+
+      if (filters?.startDate) {
+        query = query.gte('tanggal', filters.startDate);
+      }
+      if (filters?.endDate) {
+        query = query.lte('tanggal', filters.endDate);
+      }
+      if (filters?.lines && filters.lines.length > 0) {
+        query = query.in('line', filters.lines);
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        hasMore = false;
+      } else {
+        allRecords = allRecords.concat(data);
+        offset += BATCH_SIZE;
+        if (data.length < BATCH_SIZE) {
+          hasMore = false;
+        }
+      }
     }
 
-    const { data, error } = await query;
-
-    if (error) throw error;
-    return (data || []).map(record => ({
+    return allRecords.map(record => ({
       ...record,
       tanggal: record.tanggal ? record.tanggal.substring(0, 10) : record.tanggal,
       foto_url: null

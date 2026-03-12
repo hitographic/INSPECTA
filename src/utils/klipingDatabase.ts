@@ -138,28 +138,83 @@ export const countKlipingPhotos = async (filters?: {
   try {
     console.log('[KLIPING] countKlipingPhotos called with filters:', filters);
 
-    const { data, error } = await supabase.rpc('count_kliping_photos', {
+    // First try RPC, fall back to client-side counting if RPC doesn't exist
+    const { data: rpcData, error: rpcError } = await supabase.rpc('count_kliping_photos', {
       p_plant: filters?.plant || null
     });
 
-    if (error) {
-      console.error('[KLIPING] Error counting photos:', error);
-      return {};
+    if (!rpcError && rpcData) {
+      console.log('[KLIPING] RPC returned data:', rpcData.length, 'rows');
+      const counts: { [key: string]: number } = {};
+      rpcData.forEach((row: any) => {
+        const tanggal = row.tanggal ? String(row.tanggal).substring(0, 10) : row.tanggal;
+        const key = `${tanggal}_${row.line}_${row.regu}_${row.shift}_${row.pengamatan_ke}_${row.mesin}`;
+        counts[key] = row.photo_count;
+      });
+      return counts;
     }
 
-    console.log('[KLIPING] RPC returned data:', data);
-    console.log('[KLIPING] Data length:', data?.length);
+    // RPC not available - count photos per column WITHOUT fetching base64 content
+    // For each photo column, fetch only metadata of records that have that photo
+    console.log('[KLIPING] RPC not available, using per-column counting strategy. Error:', rpcError?.message);
+
+    const FOTO_COLUMNS = [
+      'foto_etiket', 'foto_banded', 'foto_karton', 'foto_label_etiket',
+      'foto_label_bumbu', 'foto_label_minyak_bumbu', 'foto_label_si', 'foto_label_opp_banded'
+    ];
 
     const counts: { [key: string]: number } = {};
-    data?.forEach((row: any) => {
-      console.log('[KLIPING] Raw row.tanggal type:', typeof row.tanggal, 'value:', row.tanggal);
-      const key = `${row.tanggal}_${row.line}_${row.regu}_${row.shift}_${row.pengamatan_ke}_${row.mesin}`;
-      counts[key] = row.photo_count;
-      console.log('[KLIPING] Photo count key:', key, '=', row.photo_count);
+
+    const fetchAllPaginated = async (col: string): Promise<any[]> => {
+      const BATCH_SIZE = 1000;
+      let allRows: any[] = [];
+      let offset = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        let query = supabase
+          .from('kliping_records')
+          .select('tanggal, line, regu, shift, pengamatan_ke, mesin')
+          .neq(col, '')
+          .not(col, 'is', null)
+          .range(offset, offset + BATCH_SIZE - 1);
+
+        if (filters?.plant) {
+          query = query.eq('plant', filters.plant);
+        }
+
+        const { data, error } = await query;
+
+        if (error) {
+          console.error(`[KLIPING] Error counting ${col}:`, error.message);
+          break;
+        }
+
+        if (!data || data.length === 0) {
+          hasMore = false;
+        } else {
+          allRows = allRows.concat(data);
+          offset += BATCH_SIZE;
+          if (data.length < BATCH_SIZE) hasMore = false;
+        }
+      }
+      return allRows;
+    };
+
+    // Run all 8 column queries in parallel for speed
+    const results = await Promise.all(
+      FOTO_COLUMNS.map(col => fetchAllPaginated(col))
+    );
+
+    results.forEach((rows) => {
+      rows.forEach((row: any) => {
+        const tanggal = row.tanggal ? String(row.tanggal).substring(0, 10) : row.tanggal;
+        const key = `${tanggal}_${row.line}_${row.regu}_${row.shift}_${row.pengamatan_ke}_${row.mesin}`;
+        counts[key] = (counts[key] || 0) + 1;
+      });
     });
 
-    console.log('[KLIPING] Final counts object:', counts);
-    console.log('[KLIPING] Total keys in counts:', Object.keys(counts).length);
+    console.log('[KLIPING] Photo counts computed:', Object.keys(counts).length, 'keys');
 
     return counts;
   } catch (error) {
@@ -179,63 +234,76 @@ export const getKlipingRecords = async (filters?: {
   try {
     console.log('[KLIPING] Fetching records with filters:', filters);
 
-    let query = supabase
-      .from('kliping_records')
-      .select('id, id_unik, plant, tanggal, line, regu, shift, flavor, pengamatan_ke, mesin, created_by, created_at, updated_at, is_complete, pengamatan_timestamp')
-      .order('tanggal', { ascending: false })
-      .order('created_at', { ascending: false });
+    const BATCH_SIZE = 1000;
+    let allRecords: any[] = [];
+    let offset = 0;
+    let hasMore = true;
 
-    if (filters?.plant) {
-      query = query.eq('plant', filters.plant);
-      console.log('[KLIPING] Filtering by plant:', filters.plant);
+    while (hasMore) {
+      console.log(`[KLIPING] Fetching batch starting at offset ${offset}...`);
+
+      let query = supabase
+        .from('kliping_records')
+        .select('id, id_unik, plant, tanggal, line, regu, shift, flavor, pengamatan_ke, mesin, created_by, created_at, updated_at, is_complete, pengamatan_timestamp')
+        .order('tanggal', { ascending: false })
+        .order('created_at', { ascending: false })
+        .range(offset, offset + BATCH_SIZE - 1);
+
+      if (filters?.plant) {
+        query = query.eq('plant', filters.plant);
+      }
+
+      if (filters?.startDate) {
+        query = query.gte('tanggal', filters.startDate);
+      }
+
+      if (filters?.endDate) {
+        query = query.lte('tanggal', filters.endDate);
+      }
+
+      if (filters?.line) {
+        query = query.eq('line', filters.line);
+      }
+
+      if (filters?.regu) {
+        query = query.eq('regu', filters.regu);
+      }
+
+      if (filters?.shift) {
+        query = query.eq('shift', filters.shift);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('[KLIPING] Error fetching batch:', error);
+        console.error('[KLIPING] Error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        break;
+      }
+
+      if (!data || data.length === 0) {
+        hasMore = false;
+      } else {
+        console.log(`[KLIPING] Fetched ${data.length} records in this batch, total so far: ${allRecords.length + data.length}`);
+        allRecords = allRecords.concat(data);
+        offset += BATCH_SIZE;
+
+        if (data.length < BATCH_SIZE) {
+          hasMore = false;
+        }
+      }
     }
 
-    if (filters?.startDate) {
-      query = query.gte('tanggal', filters.startDate);
-      console.log('[KLIPING] Filtering by startDate:', filters.startDate);
-    }
-
-    if (filters?.endDate) {
-      query = query.lte('tanggal', filters.endDate);
-      console.log('[KLIPING] Filtering by endDate:', filters.endDate);
-    }
-
-    if (filters?.line) {
-      query = query.eq('line', filters.line);
-      console.log('[KLIPING] Filtering by line:', filters.line);
-    }
-
-    if (filters?.regu) {
-      query = query.eq('regu', filters.regu);
-      console.log('[KLIPING] Filtering by regu:', filters.regu);
-    }
-
-    if (filters?.shift) {
-      query = query.eq('shift', filters.shift);
-      console.log('[KLIPING] Filtering by shift:', filters.shift);
-    }
-
-    // Remove the default 1000 row limit by setting a higher limit
-    query = query.limit(10000);
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('[KLIPING] Error fetching records:', error);
-      console.error('[KLIPING] Error details:', {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code
-      });
-      return [];
-    }
-
-    console.log('[KLIPING] Successfully fetched records:', data?.length || 0);
-    console.log('[KLIPING] Sample data:', data?.[0]);
+    console.log('[KLIPING] Successfully fetched total records:', allRecords.length);
+    console.log('[KLIPING] Sample data:', allRecords[0]);
 
     // Normalize tanggal to YYYY-MM-DD (some Supabase configs return datetime strings)
-    return (data || []).map(record => ({
+    return allRecords.map(record => ({
       ...record,
       tanggal: record.tanggal ? record.tanggal.substring(0, 10) : record.tanggal
     }));
