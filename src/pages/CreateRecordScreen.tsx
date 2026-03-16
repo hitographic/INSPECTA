@@ -70,6 +70,7 @@ export default function CreateRecordScreen() {
   const [dynamicBagianByArea, setDynamicBagianByArea] = useState<{[key: string]: Bagian[]}>({});
   const [dynamicKeterangan, setDynamicKeterangan] = useState<{[key: string]: string}>({});
   const [useDynamicData, setUseDynamicData] = useState(false);
+  const [saveLoading, setSaveLoading] = useState<{ active: boolean; message: string; subMessage?: string }>({ active: false, message: '' });
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const cameraManager = useRef(new CameraManager());
@@ -572,6 +573,7 @@ export default function CreateRecordScreen() {
     }
 
     try {
+      setSaveLoading({ active: true, message: 'Menyimpan data...', subMessage: 'Mengecek record yang sudah ada' });
       console.log('[SAVE] Checking for existing record...');
       const metadata = recordsMetadata.find(r => r.area === area && r.bagian === bagian);
       const existingRecord = metadata ? { id: metadata.id } : null;
@@ -587,6 +589,9 @@ export default function CreateRecordScreen() {
         (existingRecordData.photoAfterUri !== photoAfter && existingRecordData.foto_sesudah !== photoAfter);
 
       // Process both timestamps in parallel for faster save
+      if ((photoBefore && photoBeforeChanged) || (photoAfter && photoAfterChanged)) {
+        setSaveLoading({ active: true, message: 'Memproses foto...', subMessage: 'Menambahkan timestamp pada foto' });
+      }
       const [beforeResult, afterResult] = await Promise.all([
         (photoBefore && photoBeforeChanged && photoBeforeSource === 'camera')
           ? cameraManager.current.addTimestampToImage(photoBefore, undefined, undefined)
@@ -611,6 +616,7 @@ export default function CreateRecordScreen() {
       if (existingRecord && existingRecord.id) {
         // Update existing record
         console.log('[SAVE] Updating existing record:', existingRecord.id);
+        setSaveLoading({ active: true, message: 'Mengupload foto & menyimpan...', subMessage: 'Mengunggah foto ke Google Drive' });
         const beforeTimestamp = photoBeforeDate && photoBeforeTime
           ? new Date(`${photoBeforeDate}T${photoBeforeTime}:00`).toISOString()
           : '';
@@ -630,6 +636,7 @@ export default function CreateRecordScreen() {
       } else {
         // Create new record
         console.log('[SAVE] Creating new record');
+        setSaveLoading({ active: true, message: 'Mengupload foto & menyimpan...', subMessage: 'Mengunggah foto ke Google Drive' });
         const beforeTimestamp = photoBeforeDate && photoBeforeTime
           ? new Date(`${photoBeforeDate}T${photoBeforeTime}:00`).toISOString()
           : '';
@@ -660,15 +667,18 @@ export default function CreateRecordScreen() {
       setSelectedLine(line);
       
       // Reload metadata
+      setSaveLoading({ active: true, message: 'Hampir selesai...', subMessage: 'Memperbarui data' });
       console.log('[SAVE] Reloading metadata...');
       await loadMetadata();
 
+      setSaveLoading({ active: false, message: '' });
       console.log('[SAVE] Save process completed successfully');
       alert('Record berhasil disimpan sementara');
       
       // Navigate to next bagian automatically
       navigateToBagian('next');
     } catch (error) {
+      setSaveLoading({ active: false, message: '' });
       console.error('[SAVE] Save record error:', error);
       console.error('[SAVE] Error details:', {
         message: error instanceof Error ? error.message : 'Unknown error',
@@ -707,9 +717,14 @@ export default function CreateRecordScreen() {
       const draftIds = draftRecords.filter(r => r.id).map(r => r.id);
       
       if (draftIds.length > 0) {
+        setSaveLoading({ active: true, message: 'Menyimpan semua record...', subMessage: `Memproses ${draftIds.length} draft record` });
         console.log('[SAVE_ALL] Batch updating', draftIds.length, 'records...');
         const result = await batchUpdateStatus(draftIds, 'completed');
         console.log('[SAVE_ALL] Batch update result:', result);
+
+        setSaveLoading({ active: true, message: 'Hampir selesai...', subMessage: 'Memperbarui data' });
+        await loadMetadata();
+        setSaveLoading({ active: false, message: '' });
 
         if (result.updatedCount < result.totalRequested) {
           alert(`${result.updatedCount} dari ${result.totalRequested} record berhasil disimpan.`);
@@ -717,9 +732,8 @@ export default function CreateRecordScreen() {
           alert(`${result.updatedCount} record berhasil disimpan ke Sanitation Records`);
         }
       }
-
-      await loadMetadata();
     } catch (error) {
+      setSaveLoading({ active: false, message: '' });
       console.error('[SAVE_ALL] Save all records error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       alert(`Gagal menyimpan semua record: ${errorMessage}`);
@@ -1154,7 +1168,7 @@ export default function CreateRecordScreen() {
               <button 
                 type="submit" 
                 className="button button-secondary"
-                disabled={!line || !area || !bagian}
+                disabled={!line || !area || !bagian || saveLoading.active}
               >
                 Simpan Sementara
               </button>
@@ -1165,6 +1179,7 @@ export default function CreateRecordScreen() {
                 className="button button-primary"
                 onClick={handleSaveAll}
                 style={{ marginTop: '1rem' }}
+                disabled={saveLoading.active}
               >
                 {recordsMetadata.filter(r => r.status === 'draft').length > 0
                   ? `Simpan Semua (${recordsMetadata.filter(r => r.status === 'draft').length} Draft)`
@@ -1174,6 +1189,66 @@ export default function CreateRecordScreen() {
           )}
         </form>
       </div>
+
+      {/* Save Loading Overlay */}
+      {saveLoading.active && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10001,
+            backdropFilter: 'blur(4px)'
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '1rem',
+              padding: '2rem 2.5rem',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '1.25rem',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+              maxWidth: '320px',
+              width: '85%',
+              textAlign: 'center'
+            }}
+          >
+            {/* Spinner */}
+            <div
+              style={{
+                width: '48px',
+                height: '48px',
+                border: '4px solid #e5e7eb',
+                borderTop: '4px solid #6366f1',
+                borderRadius: '50%',
+                animation: 'spin 0.8s linear infinite'
+              }}
+            />
+            <div>
+              <p style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600, color: '#1f2937' }}>
+                {saveLoading.message}
+              </p>
+              {saveLoading.subMessage && (
+                <p style={{ margin: '0.4rem 0 0', fontSize: '0.85rem', color: '#6b7280' }}>
+                  {saveLoading.subMessage}
+                </p>
+              )}
+            </div>
+            <p style={{ margin: 0, fontSize: '0.75rem', color: '#9ca3af' }}>
+              Mohon tunggu, jangan tutup halaman ini
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Image Preview Modal */}
       {previewImage && (
