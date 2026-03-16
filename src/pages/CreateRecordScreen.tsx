@@ -616,7 +616,7 @@ export default function CreateRecordScreen() {
       if (existingRecord && existingRecord.id) {
         // Update existing record
         console.log('[SAVE] Updating existing record:', existingRecord.id);
-        setSaveLoading({ active: true, message: 'Mengupload foto & menyimpan...', subMessage: 'Mengunggah foto ke Google Drive' });
+        setSaveLoading({ active: true, message: 'Mengupload foto & menyimpan...' });
         const beforeTimestamp = photoBeforeDate && photoBeforeTime
           ? new Date(`${photoBeforeDate}T${photoBeforeTime}:00`).toISOString()
           : '';
@@ -636,7 +636,7 @@ export default function CreateRecordScreen() {
       } else {
         // Create new record
         console.log('[SAVE] Creating new record');
-        setSaveLoading({ active: true, message: 'Mengupload foto & menyimpan...', subMessage: 'Mengunggah foto ke Google Drive' });
+        setSaveLoading({ active: true, message: 'Mengupload foto & menyimpan...' });
         const beforeTimestamp = photoBeforeDate && photoBeforeTime
           ? new Date(`${photoBeforeDate}T${photoBeforeTime}:00`).toISOString()
           : '';
