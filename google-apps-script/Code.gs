@@ -181,6 +181,11 @@ function handleRequest(e) {
       case 'getPhotoBase64':
         result = handleGetPhotoBase64(params);
         break;
+      
+      // BATCH OPERATIONS
+      case 'batchUpdateSanitationStatus':
+        result = handleBatchUpdateSanitationStatus(postData);
+        break;
 
       // ===== GENERIC CRUD (for MasterDataManagement, updateStatus, etc.) =====
       case 'get':
@@ -647,6 +652,58 @@ function handleGetSanitationRecordsMetadata(params) {
   }
   
   return Object.values(uniqueMap);
+}
+
+/**
+ * Batch update status for multiple sanitation records in one call.
+ * Expects data.ids (array of record IDs) and data.status (new status).
+ * This is much faster than calling updateSanitationRecord N times.
+ */
+function handleBatchUpdateSanitationStatus(data) {
+  try {
+    var ids = data.ids;
+    var newStatus = data.status || 'completed';
+    
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return { success: false, error: 'No record IDs provided' };
+    }
+    
+    var sheet = getSheet('sanitation_records');
+    if (!sheet) return { success: false, error: 'Sheet not found' };
+    
+    var allData = sheet.getDataRange().getValues();
+    var headers = allData[0];
+    var idCol = headers.indexOf('id');
+    var statusCol = headers.indexOf('status');
+    var updatedAtCol = headers.indexOf('updated_at');
+    
+    if (idCol === -1 || statusCol === -1) {
+      return { success: false, error: 'Required columns not found' };
+    }
+    
+    var now = nowISO();
+    var successCount = 0;
+    var idSet = {};
+    for (var i = 0; i < ids.length; i++) {
+      idSet[String(ids[i])] = true;
+    }
+    
+    // Update all matching rows in one pass
+    for (var row = 1; row < allData.length; row++) {
+      if (idSet[String(allData[row][idCol])]) {
+        // Row in sheet is row+1 (1-indexed)
+        sheet.getRange(row + 1, statusCol + 1).setValue(newStatus);
+        if (updatedAtCol !== -1) {
+          sheet.getRange(row + 1, updatedAtCol + 1).setValue(now);
+        }
+        successCount++;
+      }
+    }
+    
+    return { success: true, updatedCount: successCount, totalRequested: ids.length };
+  } catch (error) {
+    return { success: false, error: error.toString() };
+  }
 }
 
 // ===== KLIPING RECORD HANDLERS =====

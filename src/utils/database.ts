@@ -7,6 +7,46 @@ const log = (message: string, data?: any) => {
   if (DEBUG) console.log(`[DATABASE] ${message}`, data || '');
 };
 
+/**
+ * Compress a base64 data URL image to reduce upload payload size.
+ * Resizes to max 800x800 and compresses to JPEG quality 0.7.
+ * This reduces ~2MB base64 to ~200-400KB, making uploads 3-5x faster.
+ */
+function compressForUpload(dataUrl: string, maxDim: number = 800, quality: number = 0.7): Promise<string> {
+  return new Promise((resolve) => {
+    if (!dataUrl || !dataUrl.startsWith('data:image')) {
+      resolve(dataUrl);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      try {
+        let w = img.width;
+        let h = img.height;
+        // Only downscale if larger than maxDim
+        if (w > maxDim || h > maxDim) {
+          const scale = Math.min(maxDim / w, maxDim / h);
+          w = Math.round(w * scale);
+          h = Math.round(h * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { resolve(dataUrl); return; }
+        ctx.drawImage(img, 0, 0, w, h);
+        const compressed = canvas.toDataURL('image/jpeg', quality);
+        log(`Compressed: ${(dataUrl.length / 1024).toFixed(0)}KB → ${(compressed.length / 1024).toFixed(0)}KB`);
+        resolve(compressed);
+      } catch {
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 class DatabaseManager {
   async init(): Promise<void> {
     try {
@@ -22,8 +62,10 @@ class DatabaseManager {
     if (!photoUri) return null;
     if (photoUri.includes('drive.google.com') || photoUri.includes('googleusercontent.com')) return photoUri;
     if (photoUri.startsWith('data:image')) {
+      // Compress before upload to reduce payload size and speed up transfer
+      const compressed = await compressForUpload(photoUri);
       const fileName = `photo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.jpg`;
-      const result = await uploadPhotoFromDataUrl(photoUri, fileName, folder);
+      const result = await uploadPhotoFromDataUrl(compressed, fileName, folder);
       if (result.success && result.directUrl) return result.directUrl;
       log('Photo upload failed:', result.error);
       return null;
@@ -66,8 +108,11 @@ class DatabaseManager {
       } catch { createdBy = 'anonymous'; }
     }
 
-    const fotoSebelum = await this.uploadPhotoIfNeeded(record.photoBeforeUri, 'sanitation');
-    const fotoSesudah = await this.uploadPhotoIfNeeded(record.photoAfterUri, 'sanitation');
+    // Upload both photos in parallel for 2x speed improvement
+    const [fotoSebelum, fotoSesudah] = await Promise.all([
+      this.uploadPhotoIfNeeded(record.photoBeforeUri, 'sanitation'),
+      this.uploadPhotoIfNeeded(record.photoAfterUri, 'sanitation')
+    ]);
 
     const result = await gPost('insertSanitationRecord', {
       plant: record.plant,
@@ -183,11 +228,18 @@ class DatabaseManager {
     if (record.status) updateData.status = record.status;
     if (record.foto_sebelum_timestamp !== undefined) updateData.foto_sebelum_timestamp = record.foto_sebelum_timestamp;
     if (record.foto_sesudah_timestamp !== undefined) updateData.foto_sesudah_timestamp = record.foto_sesudah_timestamp;
-    if (record.photoBeforeUri !== undefined) {
-      updateData.foto_sebelum = await this.uploadPhotoIfNeeded(record.photoBeforeUri, 'sanitation') || '';
-    }
-    if (record.photoAfterUri !== undefined) {
-      updateData.foto_sesudah = await this.uploadPhotoIfNeeded(record.photoAfterUri, 'sanitation') || '';
+
+    // Upload both photos in parallel for 2x speed improvement
+    const needsBefore = record.photoBeforeUri !== undefined;
+    const needsAfter = record.photoAfterUri !== undefined;
+
+    if (needsBefore || needsAfter) {
+      const [beforeResult, afterResult] = await Promise.all([
+        needsBefore ? this.uploadPhotoIfNeeded(record.photoBeforeUri, 'sanitation') : Promise.resolve(undefined),
+        needsAfter ? this.uploadPhotoIfNeeded(record.photoAfterUri, 'sanitation') : Promise.resolve(undefined)
+      ]);
+      if (needsBefore) updateData.foto_sebelum = beforeResult || '';
+      if (needsAfter) updateData.foto_sesudah = afterResult || '';
     }
 
     const result = await gPost('updateSanitationRecord', updateData);
@@ -238,6 +290,21 @@ class DatabaseManager {
   async clearAllData(): Promise<void> {
     console.warn('clearAllData not supported with Google Sheets backend');
   }
+
+  /**
+   * Batch update status for multiple records in one API call.
+   * Much faster than calling updateRecord N times for status-only changes.
+   */
+  async batchUpdateStatus(ids: (number | string)[], status: 'draft' | 'completed'): Promise<{ updatedCount: number; totalRequested: number }> {
+    log('Starting batchUpdateStatus...', { count: ids.length, status });
+    const result = await gPost('batchUpdateSanitationStatus', {
+      ids: ids.map(id => String(id)),
+      status
+    });
+    if (!result.success) throw new Error(result.error || 'Batch update failed');
+    log('Batch update successful:', result);
+    return { updatedCount: result.updatedCount, totalRequested: result.totalRequested };
+  }
 }
 
 const dbManager = new DatabaseManager();
@@ -253,3 +320,4 @@ export const updateRecord = (id: number, record: Partial<SanitationRecord>) => d
 export const deleteRecord = (id: number) => dbManager.deleteRecord(id);
 export const checkRecordExists = (plant: string, line: string, tanggal: string) => dbManager.checkRecordExists(plant, line, tanggal);
 export const clearAllData = () => dbManager.clearAllData();
+export const batchUpdateStatus = (ids: (number | string)[], status: 'draft' | 'completed') => dbManager.batchUpdateStatus(ids, status);

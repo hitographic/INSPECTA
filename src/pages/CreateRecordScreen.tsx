@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../contexts/AppContext';
-import { insertRecord, initDatabase, getRecordsMetadata, getRecordById, updateRecord } from '../utils/database';
+import { insertRecord, initDatabase, getRecordsMetadata, getRecordById, updateRecord, batchUpdateStatus } from '../utils/database';
 import { AREAS, BAGIAN_BY_AREA, KETERANGAN_TEMPLATES, PLANTS } from '../constants/AppConstants';
 import { CameraManager } from '../utils/camera';
 import { ArrowLeft, Camera, ChevronLeft, ChevronRight, X, Upload, Eye } from 'lucide-react';
@@ -586,22 +586,24 @@ export default function CreateRecordScreen() {
       const photoAfterChanged = !existingRecordData ||
         (existingRecordData.photoAfterUri !== photoAfter && existingRecordData.foto_sesudah !== photoAfter);
 
-      if (photoBefore && photoBeforeChanged && photoBeforeSource === 'camera') {
-        photoBeforeWithTimestamp = await cameraManager.current.addTimestampToImage(
-          photoBefore,
-          undefined,
-          undefined
-        ) || photoBefore;
+      // Process both timestamps in parallel for faster save
+      const [beforeResult, afterResult] = await Promise.all([
+        (photoBefore && photoBeforeChanged && photoBeforeSource === 'camera')
+          ? cameraManager.current.addTimestampToImage(photoBefore, undefined, undefined)
+          : Promise.resolve(null),
+        (photoAfter && photoAfterChanged && photoAfterSource === 'camera')
+          ? cameraManager.current.addTimestampToImage(photoAfter, undefined, undefined)
+          : Promise.resolve(null)
+      ]);
+
+      if (beforeResult) {
+        photoBeforeWithTimestamp = beforeResult;
       } else if (photoBefore && photoBeforeChanged) {
         photoBeforeWithTimestamp = photoBefore;
       }
 
-      if (photoAfter && photoAfterChanged && photoAfterSource === 'camera') {
-        photoAfterWithTimestamp = await cameraManager.current.addTimestampToImage(
-          photoAfter,
-          undefined,
-          undefined
-        ) || photoAfter;
+      if (afterResult) {
+        photoAfterWithTimestamp = afterResult;
       } else if (photoAfter && photoAfterChanged) {
         photoAfterWithTimestamp = photoAfter;
       }
@@ -701,25 +703,19 @@ export default function CreateRecordScreen() {
     }
 
     try {
-      let successCount = 0;
-      let errorCount = 0;
+      // Use batch update - one API call instead of N sequential calls
+      const draftIds = draftRecords.filter(r => r.id).map(r => r.id);
+      
+      if (draftIds.length > 0) {
+        console.log('[SAVE_ALL] Batch updating', draftIds.length, 'records...');
+        const result = await batchUpdateStatus(draftIds, 'completed');
+        console.log('[SAVE_ALL] Batch update result:', result);
 
-      for (const record of draftRecords) {
-        if (record.id) {
-          try {
-            await updateRecord(record.id, { status: 'completed' });
-            successCount++;
-          } catch (error) {
-            console.error('[SAVE_ALL] Failed to update record:', record.id, error);
-            errorCount++;
-          }
+        if (result.updatedCount < result.totalRequested) {
+          alert(`${result.updatedCount} dari ${result.totalRequested} record berhasil disimpan.`);
+        } else {
+          alert(`${result.updatedCount} record berhasil disimpan ke Sanitation Records`);
         }
-      }
-
-      if (errorCount > 0) {
-        alert(`${successCount} record berhasil disimpan, ${errorCount} record gagal disimpan.`);
-      } else {
-        alert(`${successCount} record berhasil disimpan ke Sanitation Records`);
       }
 
       await loadMetadata();
