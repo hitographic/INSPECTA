@@ -387,7 +387,7 @@ export default function RecordsScreen() {
         </div>
       )}
 
-      <div className="card" style={{ display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 8rem)', overflow: 'hidden' }}>
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', overflow: 'visible' }}>
         <div className="header" style={{ flexShrink: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
@@ -523,7 +523,7 @@ export default function RecordsScreen() {
         </div>
 
         {/* Records List */}
-        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
+        <div style={{ minHeight: '60vh', overflowX: 'hidden' }}>
           {loading ? (
             <div className="loading">
               <div className="spinner"></div>
