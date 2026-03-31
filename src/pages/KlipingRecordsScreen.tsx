@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Plus, FileDown, Trash2, Eye, X } from 'lucide-react';
 import { KlipingRecord } from '../types/database';
-import { getKlipingRecords, getKlipingRecordsWithPhotos, getKlipingRecordPhotos, countKlipingPhotos, REGU_OPTIONS, SHIFT_OPTIONS, FOTO_TYPES } from '../utils/klipingDatabase';
+import { getKlipingRecords, getKlipingRecordsWithPhotos, getKlipingRecordPhotos, countKlipingPhotos, deleteKlipingRecord, deleteKlipingRecordsByIdUnik, REGU_OPTIONS, SHIFT_OPTIONS, FOTO_TYPES } from '../utils/klipingDatabase';
 import { exportKlipingToExcel, exportKlipingToPDF, exportAllKlipingSequential } from '../utils/klipingExport';
-import { gGet, gPost, isDriveUrl, fetchDriveImageAsBase64 } from '../utils/googleApi';
+import { isDriveUrl, fetchDriveImageAsBase64 } from '../utils/googleApi';
 import { PLANTS } from '../constants/AppConstants';
 import { getUserPermissions } from '../utils/authService';
 import { requestQueue } from '../utils/requestQueue';
@@ -477,25 +477,46 @@ const KlipingRecordsScreen: React.FC = () => {
     }
 
     try {
-      // Get all kliping records, then filter and delete matching ones
-      const allRecords = await gGet('get', { table: 'kliping_records' });
-      const records = Array.isArray(allRecords) ? allRecords : [];
-
-      const toDelete = records.filter((r: any) => {
-        if (r.plant !== plant) return false;
-        if (startDate && r.tanggal < startDate) return false;
-        if (endDate && r.tanggal > endDate) return false;
-        if (selectedLines.length > 0 && !selectedLines.includes(r.line)) return false;
-        if (selectedRegus.length > 0 && !selectedRegus.includes(r.regu)) return false;
-        if (selectedShifts.length > 0 && !selectedShifts.includes(r.shift)) return false;
-        return true;
+      // Use filteredRecords which are already loaded, and delete using dedicated endpoints
+      const recordsToDelete = hasFilters ? filteredRecords : records;
+      
+      // Group by id_unik to use bulk delete where possible
+      const idUnikSet = new Set<string>();
+      const noIdUnikRecords: KlipingRecord[] = [];
+      
+      recordsToDelete.forEach(r => {
+        if (r.id_unik) {
+          idUnikSet.add(r.id_unik);
+        } else if (r.id) {
+          noIdUnikRecords.push(r);
+        }
       });
 
-      for (const record of toDelete) {
-        await gPost('delete', { table: 'kliping_records', id: record.id });
+      let failCount = 0;
+
+      // Delete by id_unik (bulk)
+      for (const idUnik of idUnikSet) {
+        const result = await deleteKlipingRecordsByIdUnik(idUnik);
+        if (!result.success) {
+          console.error('[KLIPING DELETE ALL] Failed to delete id_unik:', idUnik, result.error);
+          failCount++;
+        }
       }
 
-      alert('Data berhasil dihapus');
+      // Delete remaining records individually
+      for (const record of noIdUnikRecords) {
+        const result = await deleteKlipingRecord(record.id!);
+        if (!result.success) {
+          console.error('[KLIPING DELETE ALL] Failed to delete record:', record.id, result.error);
+          failCount++;
+        }
+      }
+
+      if (failCount > 0) {
+        alert(`Sebagian data gagal dihapus (${failCount} gagal)`);
+      } else {
+        alert('Data berhasil dihapus');
+      }
       await loadRecords();
     } catch (error) {
       console.error('Error deleting records:', error);
@@ -1171,23 +1192,23 @@ const KlipingRecordsScreen: React.FC = () => {
                           onClick={async () => {
                             if (confirm(`Hapus semua pengamatan untuk ${firstRecord.line} - Regu ${firstRecord.regu} - Shift ${firstRecord.shift}?`)) {
                               try {
-                                // Get all records matching this session, then delete them
-                                const allRecords = await gGet('get', { table: 'kliping_records' });
-                                const records = Array.isArray(allRecords) ? allRecords : [];
-                                const toDelete = records.filter((r: any) =>
-                                  r.plant === plant &&
-                                  r.tanggal === firstRecord.tanggal &&
-                                  r.line === firstRecord.line &&
-                                  r.regu === firstRecord.regu &&
-                                  r.shift === firstRecord.shift
-                                );
-
-                                for (const record of toDelete) {
-                                  await gPost('delete', { table: 'kliping_records', id: record.id });
+                                // Use id_unik to delete all records in this session
+                                const idUnik = firstRecord.id_unik;
+                                if (!idUnik) {
+                                  alert('Tidak dapat menghapus: id_unik tidak ditemukan');
+                                  return;
                                 }
 
-                                alert('Data berhasil dihapus');
-                                await loadRecords();
+                                console.log('[KLIPING DELETE] Deleting session with id_unik:', idUnik);
+                                const result = await deleteKlipingRecordsByIdUnik(idUnik);
+                                
+                                if (result.success) {
+                                  alert('Data berhasil dihapus');
+                                  await loadRecords();
+                                } else {
+                                  console.error('[KLIPING DELETE] Delete failed:', result.error);
+                                  alert('Gagal menghapus data: ' + (result.error || 'Unknown error'));
+                                }
                               } catch (error) {
                                 console.error('Error in delete operation:', error);
                                 alert('Gagal menghapus data');
