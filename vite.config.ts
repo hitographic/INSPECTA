@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 const isGitHubPages = process.env.VITE_DEPLOY_TARGET === 'github-pages';
-const baseUrl = isGitHubPages ? '/INSPECTA_CLONE/' : '/';
+const baseUrl = isGitHubPages ? '/INSPECTA/' : '/';
 
 export default defineConfig({
   plugins: [
