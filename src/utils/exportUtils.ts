@@ -471,7 +471,7 @@ export const exportToExcel = async (records: SanitationRecord[]): Promise<boolea
       // Code form (F1:F2)
       worksheet.mergeCells('F1:F2');
       const codeCell = worksheet.getCell('F1');
-      codeCell.value = 'Kode Form : CQA - 69\nNo.Terbitan : 1.0';
+      codeCell.value = 'Kode Form : CQA - 69\nNo.Terbitan : 1.1';
       codeCell.font = { size: 12 };
       codeCell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true, indent: 1 };
       codeCell.border = {
@@ -834,7 +834,7 @@ export const exportToPDF = async (records: SanitationRecord[]): Promise<boolean>
       pdf.setFontSize(9);
       pdf.setFont('helvetica', 'normal');
       pdf.text('Kode Form : CQA - 69', pageWidth - margin - 48, yPosition + 6);
-      pdf.text('No.Terbitan : 1.0', pageWidth - margin - 48, yPosition + 11);
+      pdf.text('No.Terbitan : 1.1', pageWidth - margin - 48, yPosition + 11);
       
       yPosition += 25;
 
