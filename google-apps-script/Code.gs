@@ -990,7 +990,10 @@ function handleDeleteMonitoringRecord(data) {
   var records = getSheetData('monitoring_records');
   var record = records.find(function(r) { return String(r.id) === String(data.id); });
   if (record) {
+    Logger.log('[DELETE] Found record:', record.id, 'with foto_url:', record.foto_url);
     deleteRecordPhotos(record, MONITORING_PHOTO_FIELDS);
+  } else {
+    Logger.log('[DELETE] Record not found with id:', data.id);
   }
   
   var rowNum = findRowIndex('monitoring_records', 'id', data.id);
@@ -1008,7 +1011,10 @@ function handleDeleteMonitoringSession(data) {
   var matching = allRecords.filter(function(r) {
     return String(r.plant) === String(data.plant) && String(r.tanggal) === String(data.tanggal) && String(r.line) === String(data.line);
   });
+  
+  Logger.log('[DELETE SESSION] Found', matching.length, 'matching records to delete');
   matching.forEach(function(record) {
+    Logger.log('[DELETE SESSION] Processing record:', record.id, 'with foto_url:', record.foto_url);
     deleteRecordPhotos(record, MONITORING_PHOTO_FIELDS);
   });
   
@@ -1018,6 +1024,7 @@ function handleDeleteMonitoringSession(data) {
     line: data.line
   });
   
+  Logger.log('[DELETE SESSION] Deleting', rows.length, 'rows');
   deleteRows('monitoring_records', rows);
   return { success: true, count: rows.length };
 }
@@ -1223,21 +1230,50 @@ function handleGetAuditLogs(params) {
  * Extract Google Drive file ID from various URL formats
  */
 function extractDriveFileId(url) {
-  if (!url || typeof url !== 'string') return null;
+  if (!url || typeof url !== 'string') {
+    Logger.log('[EXTRACT ID] Invalid input - url is:', typeof url);
+    return null;
+  }
+  
+  // Trim whitespace
+  url = url.trim();
+  Logger.log('[EXTRACT ID] Processing URL:', url);
+  
   // Format: https://lh3.googleusercontent.com/d/FILE_ID
   var matchLh3 = url.match(/googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/);
-  if (matchLh3) return matchLh3[1];
+  if (matchLh3) {
+    Logger.log('[EXTRACT ID] Matched lh3 pattern, ID:', matchLh3[1]);
+    return matchLh3[1];
+  }
+  
   // Format: https://drive.google.com/uc?export=view&id=FILE_ID
   var match1 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
-  if (match1) return match1[1];
+  if (match1) {
+    Logger.log('[EXTRACT ID] Matched query param pattern, ID:', match1[1]);
+    return match1[1];
+  }
+  
   // Format: https://drive.google.com/file/d/FILE_ID/view
   var match2 = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
-  if (match2) return match2[1];
+  if (match2) {
+    Logger.log('[EXTRACT ID] Matched /d/ pattern, ID:', match2[1]);
+    return match2[1];
+  }
+  
   // Format: https://drive.google.com/thumbnail?id=FILE_ID
   var match3 = url.match(/thumbnail\?id=([a-zA-Z0-9_-]+)/);
-  if (match3) return match3[1];
+  if (match3) {
+    Logger.log('[EXTRACT ID] Matched thumbnail pattern, ID:', match3[1]);
+    return match3[1];
+  }
+  
   // If it's a plain file ID (long alphanumeric string)
-  if (url.length > 20 && !/[\/\:\.?&]/.test(url)) return url;
+  if (url.length > 20 && !/[\/\:\.?&]/.test(url)) {
+    Logger.log('[EXTRACT ID] Treating as plain file ID:', url);
+    return url;
+  }
+  
+  Logger.log('[EXTRACT ID] Could not extract ID from URL');
   return null;
 }
 
@@ -1246,9 +1282,14 @@ function extractDriveFileId(url) {
  */
 function deleteDriveFile(urlOrId) {
   var fileId = extractDriveFileId(urlOrId);
-  if (!fileId) return;
+  Logger.log('[DELETE FILE] URL/ID input:', urlOrId, '-> Extracted ID:', fileId);
+  if (!fileId) {
+    Logger.log('[DELETE FILE] Could not extract file ID');
+    return;
+  }
   try {
     DriveApp.getFileById(fileId).setTrashed(true);
+    Logger.log('[DELETE FILE] Successfully deleted file:', fileId);
   } catch (e) {
     // File may already be deleted or not accessible - silently ignore
     Logger.log('Could not delete Drive file ' + fileId + ': ' + e.toString());
@@ -1259,11 +1300,34 @@ function deleteDriveFile(urlOrId) {
  * Delete all photo files associated with a record from Google Drive
  */
 function deleteRecordPhotos(record, photoFields) {
-  if (!record) return;
+  if (!record) {
+    Logger.log('[DELETE PHOTOS] No record provided');
+    return;
+  }
+  Logger.log('[DELETE PHOTOS] Processing record with fields:', photoFields);
   for (var i = 0; i < photoFields.length; i++) {
-    var url = record[photoFields[i]];
-    if (url && typeof url === 'string' && (url.indexOf('drive.google.com') !== -1 || url.indexOf('googleusercontent.com') !== -1)) {
+    var fieldName = photoFields[i];
+    var url = record[fieldName];
+    
+    Logger.log('[DELETE PHOTOS] Field:', fieldName, '-> Type:', typeof url, '-> Value:', String(url).substring(0, 50));
+    
+    // Check if URL exists and is a Drive URL
+    if (!url) {
+      Logger.log('[DELETE PHOTOS] Field is empty/null');
+      continue;
+    }
+    
+    url = String(url).trim();
+    
+    // Check if it's a Drive URL
+    var isDriveUrl = url.indexOf('drive.google.com') !== -1 || url.indexOf('googleusercontent.com') !== -1;
+    Logger.log('[DELETE PHOTOS] Is Drive URL:', isDriveUrl, '-> URL:', url);
+    
+    if (isDriveUrl) {
+      Logger.log('[DELETE PHOTOS] URL is a Drive URL, attempting delete');
       deleteDriveFile(url);
+    } else {
+      Logger.log('[DELETE PHOTOS] URL is not a Drive URL or empty');
     }
   }
 }
