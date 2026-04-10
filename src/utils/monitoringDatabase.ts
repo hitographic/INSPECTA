@@ -56,7 +56,21 @@ export const getMonitoringRecordsWithPhotos = async (
 
 export const saveMonitoringRecord = async (record: Partial<MonitoringRecord>): Promise<MonitoringRecord> => {
   try {
-    const result = await gPost('saveMonitoringRecord', record);
+    // Upload photo to Google Drive if it's a base64 data URL
+    const recordData: any = { ...record };
+    
+    if (record.foto_url && typeof record.foto_url === 'string' && record.foto_url.startsWith('data:image')) {
+      const fileName = `monitoring_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.jpg`;
+      const uploadResult = await uploadPhotoFromDataUrl(record.foto_url, fileName, 'monitoring');
+      if (uploadResult.success && uploadResult.directUrl) {
+        recordData.foto_url = uploadResult.directUrl;
+      } else {
+        console.error('[MONITORING] Failed to upload photo:', uploadResult.error);
+        recordData.foto_url = '';
+      }
+    }
+    
+    const result = await gPost('saveMonitoringRecord', recordData);
     if (!result.success) throw new Error(result.error || 'Save failed');
     return result.data;
   } catch (error) {
@@ -69,7 +83,21 @@ export const updateMonitoringRecord = async (
   id: string, updates: Partial<MonitoringRecord>
 ): Promise<MonitoringRecord> => {
   try {
-    const result = await gPost('updateMonitoringRecord', { id, ...updates, updated_at: new Date().toISOString() });
+    // Upload photo to Google Drive if it's a base64 data URL
+    const updateData: any = { ...updates };
+    
+    if (updates.foto_url && typeof updates.foto_url === 'string' && updates.foto_url.startsWith('data:image')) {
+      const fileName = `monitoring_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.jpg`;
+      const uploadResult = await uploadPhotoFromDataUrl(updates.foto_url, fileName, 'monitoring');
+      if (uploadResult.success && uploadResult.directUrl) {
+        updateData.foto_url = uploadResult.directUrl;
+      } else {
+        console.error('[MONITORING] Failed to upload updated photo:', uploadResult.error);
+        updateData.foto_url = '';
+      }
+    }
+    
+    const result = await gPost('updateMonitoringRecord', { id, ...updateData, updated_at: new Date().toISOString() });
     if (!result.success) throw new Error(result.error || 'Update failed');
     return result.data;
   } catch (error) {
