@@ -312,8 +312,15 @@ function findRowIndex(sheetName, columnName, value) {
   const colIndex = headers.indexOf(columnName);
   if (colIndex === -1) return -1;
   
+  // Normalize date columns for proper comparison
+  const DATE_COLUMNS = ['tanggal'];
+  const isDateCol = DATE_COLUMNS.indexOf(columnName) !== -1;
+  const normalizedValue = isDateCol ? normalizeDate(value) : String(value);
+  
   for (let i = 1; i < data.length; i++) {
-    if (String(data[i][colIndex]) === String(value)) {
+    var cellVal = data[i][colIndex];
+    var cellStr = isDateCol ? normalizeDate(cellVal) : String(cellVal);
+    if (cellStr === normalizedValue) {
       return i + 1; // 1-based row number
     }
   }
@@ -328,11 +335,24 @@ function findRowIndices(sheetName, filters) {
   const headers = data[0];
   const indices = [];
   
+  // Normalize date columns for proper comparison
+  const DATE_COLUMNS = ['tanggal'];
+  
   for (let i = 1; i < data.length; i++) {
     let match = true;
     for (const [col, val] of Object.entries(filters)) {
       const colIndex = headers.indexOf(col);
-      if (colIndex === -1 || String(data[i][colIndex]) !== String(val)) {
+      if (colIndex === -1) {
+        match = false;
+        break;
+      }
+      
+      var cellVal = data[i][colIndex];
+      var isDateCol = DATE_COLUMNS.indexOf(col) !== -1;
+      var cellStr = isDateCol ? normalizeDate(cellVal) : String(cellVal);
+      var filterStr = isDateCol ? normalizeDate(val) : String(val);
+      
+      if (cellStr !== filterStr) {
         match = false;
         break;
       }
@@ -1006,25 +1026,51 @@ function handleDeleteMonitoringRecord(data) {
 function handleDeleteMonitoringSession(data) {
   var MONITORING_PHOTO_FIELDS = ['foto_url'];
   
+  Logger.log('[DELETE SESSION] Input data - plant:', data.plant, 'tanggal:', data.tanggal, 'line:', data.line);
+  
   // Delete associated photos
   var allRecords = getSheetData('monitoring_records');
   var matching = allRecords.filter(function(r) {
     return String(r.plant) === String(data.plant) && String(r.tanggal) === String(data.tanggal) && String(r.line) === String(data.line);
   });
   
-  Logger.log('[DELETE SESSION] Found', matching.length, 'matching records to delete');
+  Logger.log('[DELETE SESSION] Found', matching.length, 'matching records (via getSheetData) to delete photos');
   matching.forEach(function(record) {
-    Logger.log('[DELETE SESSION] Processing record:', record.id, 'with foto_url:', record.foto_url);
+    Logger.log('[DELETE SESSION] Deleting photo for record:', record.id, 'foto_url:', record.foto_url);
     deleteRecordPhotos(record, MONITORING_PHOTO_FIELDS);
   });
   
-  var rows = findRowIndices('monitoring_records', {
+  // Now find row indices to delete from sheet
+  var filters = {
     plant: data.plant,
     tanggal: data.tanggal,
     line: data.line
-  });
+  };
+  Logger.log('[DELETE SESSION] Finding rows with filters:', JSON.stringify(filters));
   
-  Logger.log('[DELETE SESSION] Deleting', rows.length, 'rows');
+  var rows = findRowIndices('monitoring_records', filters);
+  
+  Logger.log('[DELETE SESSION] Found', rows.length, 'rows to delete from sheet:', JSON.stringify(rows));
+  
+  if (rows.length === 0) {
+    Logger.log('[DELETE SESSION] WARNING: No rows found! Checking raw sheet data for debugging...');
+    // Debug: check raw values to see what's in the sheet
+    var sheet = getSheet('monitoring_records');
+    if (sheet) {
+      var rawData = sheet.getDataRange().getValues();
+      var headers = rawData[0];
+      var plantCol = headers.indexOf('plant');
+      var tanggalCol = headers.indexOf('tanggal');
+      var lineCol = headers.indexOf('line');
+      for (var i = 1; i < Math.min(rawData.length, 5); i++) {
+        Logger.log('[DELETE SESSION DEBUG] Row', i+1, '- plant:', rawData[i][plantCol], 
+          '(type:', typeof rawData[i][plantCol], ') tanggal:', rawData[i][tanggalCol],
+          '(type:', typeof rawData[i][tanggalCol], ') line:', rawData[i][lineCol],
+          '(type:', typeof rawData[i][lineCol], ')');
+      }
+    }
+  }
+  
   deleteRows('monitoring_records', rows);
   return { success: true, count: rows.length };
 }
