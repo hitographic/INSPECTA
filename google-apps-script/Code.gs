@@ -299,14 +299,29 @@ function appendRow(sheetName, rowData) {
   if (!sheet) throw new Error('Sheet not found: ' + sheetName);
   
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  
+  // DEBUG: Log what we're about to insert
+  Logger.log('[APPEND ROW] Sheet: ' + sheetName);
+  Logger.log('[APPEND ROW] Headers: ' + headers.join(', '));
+  
   const row = headers.map(h => {
     var val = rowData[h] !== undefined ? rowData[h] : '';
+    
+    // DEBUG: Log each field
+    if (h === 'line_numbers') {
+      Logger.log('[APPEND ROW] Processing line_numbers - type: ' + typeof val + ', isArray: ' + Array.isArray(val) + ', value: ' + JSON.stringify(val));
+    }
+    
     // Convert arrays to JSON string so Google Sheets stores them properly
     if (Array.isArray(val)) {
+      Logger.log('[APPEND ROW] Converting array to JSON for field: ' + h);
       val = JSON.stringify(val);
+      Logger.log('[APPEND ROW] After stringify: ' + val);
     }
     return val;
   });
+  
+  Logger.log('[APPEND ROW] Final row: ' + JSON.stringify(row));
   sheet.appendRow(row);
 }
 
@@ -376,11 +391,24 @@ function updateRow(sheetName, rowNumber, updates) {
   
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   
+  Logger.log('[UPDATE ROW] Sheet: ' + sheetName + ', Row: ' + rowNumber);
+  Logger.log('[UPDATE ROW] Update keys: ' + Object.keys(updates).join(', '));
+  
   for (const [key, value] of Object.entries(updates)) {
     const colIndex = headers.indexOf(key);
     if (colIndex !== -1) {
+      // DEBUG: Log array handling
+      if (key === 'line_numbers') {
+        Logger.log('[UPDATE ROW] Processing line_numbers - type: ' + typeof value + ', isArray: ' + Array.isArray(value) + ', value: ' + JSON.stringify(value));
+      }
+      
       // Convert arrays to JSON string so Google Sheets stores them properly
       var cellValue = Array.isArray(value) ? JSON.stringify(value) : value;
+      
+      if (key === 'line_numbers') {
+        Logger.log('[UPDATE ROW] Final cellValue for line_numbers: ' + cellValue);
+      }
+      
       sheet.getRange(rowNumber, colIndex + 1).setValue(cellValue);
     }
   }
@@ -1517,6 +1545,15 @@ function handleGenericInsert(postData) {
     
     const data = postData.data || {};
     
+    // DEBUG: Log incoming data to check line_numbers
+    Logger.log('[INSERT] Table: ' + table);
+    Logger.log('[INSERT] Data keys: ' + Object.keys(data).join(', '));
+    if (data.line_numbers !== undefined) {
+      Logger.log('[INSERT] line_numbers type: ' + typeof data.line_numbers);
+      Logger.log('[INSERT] line_numbers isArray: ' + Array.isArray(data.line_numbers));
+      Logger.log('[INSERT] line_numbers value: ' + JSON.stringify(data.line_numbers));
+    }
+    
     // Generate an id if not provided
     if (!data.id) {
       data.id = generateUUID();
@@ -1530,6 +1567,7 @@ function handleGenericInsert(postData) {
     
     return { success: true, id: data.id, data: data };
   } catch (error) {
+    Logger.log('[INSERT ERROR] ' + error.toString());
     return { error: error.toString() };
   }
 }
@@ -1593,4 +1631,38 @@ function handleGenericDelete(postData) {
   } catch (error) {
     return { error: error.toString() };
   }
+}
+
+// ===== TEST FUNCTION =====
+// Run this from Google Apps Script Editor to test array handling
+function testArrayInsert() {
+  var testData = {
+    table: 'sanitation_bagian',
+    data: {
+      area_id: 'test-area-id',
+      name: 'TEST BAGIAN - DELETE ME',
+      keterangan: 'Test untuk array',
+      line_numbers: ["1", "2", "3", "4", "5"],
+      display_order: 999
+    }
+  };
+  
+  Logger.log('=== TEST ARRAY INSERT ===');
+  Logger.log('Input line_numbers: ' + JSON.stringify(testData.data.line_numbers));
+  Logger.log('Is Array: ' + Array.isArray(testData.data.line_numbers));
+  
+  var result = handleGenericInsert(testData);
+  Logger.log('Result: ' + JSON.stringify(result));
+  
+  // Check what was saved
+  var sheet = getSheet('sanitation_bagian');
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+  var lineNumCol = headers.indexOf('line_numbers');
+  var lastRow = data[data.length - 1];
+  
+  Logger.log('Last row line_numbers value: ' + lastRow[lineNumCol]);
+  Logger.log('Type: ' + typeof lastRow[lineNumCol]);
+  
+  return result;
 }
