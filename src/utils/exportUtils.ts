@@ -906,7 +906,7 @@ export const exportToPDF = async (records: SanitationRecord[]): Promise<boolean>
         yPosition += 15;
 
         // Table header - Scale to fit A4 portrait
-        const colWidths = [15, 15, 20, 55, 55, 30]; // Adjusted to match reference layout (total: 210mm - 20mm margin = 190mm)
+        const colWidths = [15, 12, 23, 55, 55, 30]; // Adjusted: Line -20%, Bagian +20% (total: 210mm - 20mm margin = 190mm)
 
         // Draw header row
         pdf.setFontSize(8);
