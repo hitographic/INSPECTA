@@ -438,7 +438,7 @@ export const exportKlipingToExcel = async (records: KlipingRecord[]): Promise<bo
       worksheet.getColumn(col).width = 12;
     }
 
-    const fileName = `Laporan_Kliping_${firstRecord.line}_Regu${firstRecord.regu}_Shift${firstRecord.shift}_${new Date().toISOString().split('T')[0]}.xlsx`;
+    const fileName = `Laporan_Kliping_${firstRecord.line}_Regu${firstRecord.regu}_Shift${firstRecord.shift}_${firstRecord.tanggal}.xlsx`;
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -924,7 +924,7 @@ export const exportKlipingToPDF = async (records: KlipingRecord[]): Promise<bool
       yPosition += fotoRowHeight;
     }
 
-    const fileName = `Laporan_Kliping_${firstRecord.line}_Regu${firstRecord.regu}_Shift${firstRecord.shift}_${new Date().toISOString().split('T')[0]}.pdf`;
+    const fileName = `Laporan_Kliping_${firstRecord.line}_Regu${firstRecord.regu}_Shift${firstRecord.shift}_${firstRecord.tanggal}.pdf`;
     pdf.save(fileName);
 
     return true;
