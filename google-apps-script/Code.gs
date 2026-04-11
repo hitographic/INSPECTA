@@ -299,7 +299,14 @@ function appendRow(sheetName, rowData) {
   if (!sheet) throw new Error('Sheet not found: ' + sheetName);
   
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const row = headers.map(h => rowData[h] !== undefined ? rowData[h] : '');
+  const row = headers.map(h => {
+    var val = rowData[h] !== undefined ? rowData[h] : '';
+    // Convert arrays to JSON string so Google Sheets stores them properly
+    if (Array.isArray(val)) {
+      val = JSON.stringify(val);
+    }
+    return val;
+  });
   sheet.appendRow(row);
 }
 
@@ -372,7 +379,9 @@ function updateRow(sheetName, rowNumber, updates) {
   for (const [key, value] of Object.entries(updates)) {
     const colIndex = headers.indexOf(key);
     if (colIndex !== -1) {
-      sheet.getRange(rowNumber, colIndex + 1).setValue(value);
+      // Convert arrays to JSON string so Google Sheets stores them properly
+      var cellValue = Array.isArray(value) ? JSON.stringify(value) : value;
+      sheet.getRange(rowNumber, colIndex + 1).setValue(cellValue);
     }
   }
 }
