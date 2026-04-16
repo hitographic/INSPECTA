@@ -401,7 +401,9 @@ export const exportMonitoringToPDF = async (
       );
     }
 
-    pdf.save(`Laporan_Monitoring_${line}_${new Date().getTime()}.pdf`);
+    // Gunakan tanggal pembuatan dari record, bukan timestamp saat download
+    const recordDate = records[0]?.tanggal || new Date().toISOString().split('T')[0];
+    pdf.save(`Laporan_Monitoring_${line}_${recordDate}.pdf`);
 
     const loading = document.getElementById('pdf-loading');
     if (loading) {

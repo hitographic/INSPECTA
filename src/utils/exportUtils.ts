@@ -1110,7 +1110,8 @@ export const exportToPDF = async (records: SanitationRecord[]): Promise<boolean>
 const firstRecord = recordsWithPhotos[0];
 const plantSafe = (firstRecord?.plant || 'Unknown').replace(/[^\w-]/g, '');
 const lineSafe = (firstRecord?.line ? `Line-${firstRecord.line}` : 'Line-Unknown').replace(/[^\w-]/g, '');
-const dateStr = new Date().toISOString().split('T')[0];
+// Gunakan tanggal pembuatan dari record, bukan tanggal saat download
+const dateStr = firstRecord?.tanggal || new Date().toISOString().split('T')[0];
 
 // Generate nama file dengan plant dan line
 const fileName = `Laporan_Sanitasi_${plantSafe}_${lineSafe}_${dateStr}.pdf`;
