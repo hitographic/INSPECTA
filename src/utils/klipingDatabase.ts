@@ -12,16 +12,45 @@ export const insertKlipingRecord = async (
       'foto_label_bumbu', 'foto_label_minyak_bumbu', 'foto_label_si', 'foto_label_opp_banded'] as const;
 
     const recordData: any = { ...record, skipDuplicateCheck };
+    const failedUploads: string[] = [];
 
     for (const field of photoFields) {
       const val = record[field];
       if (val && typeof val === 'string' && val.startsWith('data:image')) {
         const fileName = `${field}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.jpg`;
-        const uploadResult = await uploadPhotoFromDataUrl(val, fileName, 'kliping');
-        if (uploadResult.success && uploadResult.directUrl) {
-          recordData[field] = uploadResult.directUrl;
-        } else {
-          console.error(`[KLIPING] Failed to upload ${field}:`, uploadResult.error);
+        
+        // Retry upload up to 3 times with exponential backoff
+        let uploadResult = null;
+        let lastError = null;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            uploadResult = await uploadPhotoFromDataUrl(val, fileName, 'kliping');
+            if (uploadResult.success && uploadResult.directUrl) {
+              recordData[field] = uploadResult.directUrl;
+              break; // Success, exit retry loop
+            } else if (attempt < 3) {
+              // Failed, will retry
+              lastError = uploadResult.error;
+              console.warn(`[KLIPING] Upload attempt ${attempt}/3 for ${field} failed: ${uploadResult.error}, retrying...`);
+              // Wait before retrying (exponential backoff: 1s, 2s)
+              await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            } else {
+              // Last attempt failed
+              lastError = uploadResult.error;
+              console.error(`[KLIPING] All 3 upload attempts failed for ${field}: ${uploadResult.error}`);
+            }
+          } catch (err) {
+            if (attempt < 3) {
+              console.warn(`[KLIPING] Upload attempt ${attempt}/3 for ${field} threw error, retrying...`, err);
+              await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            } else {
+              lastError = err;
+            }
+          }
+        }
+        
+        if (!uploadResult?.success) {
+          failedUploads.push(`${field}: ${lastError}`);
           recordData[field] = '';
         }
       }
@@ -30,7 +59,8 @@ export const insertKlipingRecord = async (
     const result = await gPost('insertKlipingRecord', recordData);
 
     if (!result.success) {
-      return { success: false, error: result.error || 'Insert failed', rawError: result };
+      const failureNote = failedUploads.length > 0 ? `\n\nFailed uploads: ${failedUploads.join(', ')}` : '';
+      return { success: false, error: result.error || 'Insert failed' + failureNote, rawError: result };
     }
 
     return { success: true, id: result.id, skipped: result.skipped };
@@ -214,22 +244,27 @@ export const deleteKlipingRecord = async (id: string): Promise<{ success: boolea
 
 export const deleteKlipingRecordsByIdUnik = async (idUnik: string): Promise<{ success: boolean; error?: string }> => {
   try {
-    // Log the deletion
-    const records = await getKlipingRecords();
-    const matching = records.filter(r => r.id_unik === idUnik);
+    // Try to log the deletion, but don't fail if logging fails
+    try {
+      const records = await getKlipingRecords();
+      const matching = records.filter(r => r.id_unik === idUnik);
 
-    if (matching.length > 0) {
-      const currentUserStr = localStorage.getItem('currentUser');
-      let deletedBy = 'anonymous';
-      if (currentUserStr) {
-        try { const cu = JSON.parse(currentUserStr); deletedBy = cu.full_name || cu.username || 'anonymous'; } catch {}
+      if (matching.length > 0) {
+        const currentUserStr = localStorage.getItem('currentUser');
+        let deletedBy = 'anonymous';
+        if (currentUserStr) {
+          try { const cu = JSON.parse(currentUserStr); deletedBy = cu.full_name || cu.username || 'anonymous'; } catch {}
+        }
+        const first = matching[0];
+        await logDelete({
+          table_name: 'kliping_records', record_id: idUnik, affected_count: matching.length,
+          deleted_by: deletedBy, action: 'BULK_DELETE', plant: first.plant,
+          additional_info: { line: first.line, tanggal: first.tanggal, regu: first.regu, shift: first.shift }
+        });
       }
-      const first = matching[0];
-      await logDelete({
-        table_name: 'kliping_records', record_id: idUnik, affected_count: matching.length,
-        deleted_by: deletedBy, action: 'BULK_DELETE', plant: first.plant,
-        additional_info: { line: first.line, tanggal: first.tanggal, regu: first.regu, shift: first.shift }
-      });
+    } catch (logError) {
+      // Logging failed, but continue with deletion
+      console.warn('[KLIPING] Warning: Failed to log deletion, but continuing with delete:', logError);
     }
 
     const result = await gPost('deleteKlipingByIdUnik', { id_unik: idUnik });

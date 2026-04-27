@@ -929,7 +929,11 @@ function handleDeleteKlipingByIdUnik(data) {
   });
   
   var rows = findRowIndices('kliping_records', { id_unik: data.id_unik });
-  if (rows.length === 0) return { success: false, error: 'No records found' };
+  
+  // If no records found, still return success (record may have been already deleted)
+  if (rows.length === 0) {
+    return { success: true, count: 0, note: 'No records found to delete (already deleted?)' };
+  }
   
   deleteRows('kliping_records', rows);
   return { success: true, count: rows.length };
@@ -1441,8 +1445,26 @@ function handleUploadPhoto(data) {
       data.fileName || ('photo_' + Date.now() + '.jpg')
     );
     
-    // Upload to Drive
-    const file = targetFolder.createFile(blob);
+    // Upload to Drive with retry logic
+    let file = null;
+    let lastError = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        file = targetFolder.createFile(blob);
+        break; // Success
+      } catch (err) {
+        lastError = err;
+        if (attempt < 3) {
+          console.warn('Upload attempt ' + attempt + '/3 failed, retrying...: ' + err);
+          // Wait before retrying (exponential backoff)
+          Utilities.sleep(1000 * attempt);
+        }
+      }
+    }
+    
+    if (!file) {
+      return { success: false, error: 'Failed to upload after 3 attempts: ' + lastError };
+    }
     
     // Make file accessible via link
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
