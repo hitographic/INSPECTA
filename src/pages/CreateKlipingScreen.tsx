@@ -796,6 +796,9 @@ const CreateKlipingScreen: React.FC = () => {
 
           console.log(`Inserting record for mesin ${mesin}:`, record);
 
+          // Update progress in modal
+          setSavingProgress(`Sedang menyimpan... ${mesin}`);
+
           const result = await insertKlipingRecord(record as KlipingRecord, true);
           if (!result.success) {
             const raw = (result as any).rawError;
@@ -826,6 +829,7 @@ const CreateKlipingScreen: React.FC = () => {
                 if (!retryResult.success) {
                   alert(`Tetap gagal: ${retryResult.error}\n\nCoba refresh halaman dan ulangi.`);
                   setSaving(false);
+                  setSavingProgress('');
                   return;
                 }
                 console.log(`Successfully inserted mesin ${mesin} (without photos)`);
@@ -847,6 +851,7 @@ const CreateKlipingScreen: React.FC = () => {
         }
       }
 
+      setSavingProgress('');
       alert('Semua data berhasil disimpan!');
       navigate('/kliping-records', { state: { plant } });
     } catch (error) {
@@ -854,6 +859,7 @@ const CreateKlipingScreen: React.FC = () => {
       alert('Gagal menyimpan data');
     } finally {
       setSaving(false);
+      setSavingProgress('');
     }
   };
 
