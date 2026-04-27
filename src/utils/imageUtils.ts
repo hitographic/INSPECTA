@@ -20,6 +20,43 @@ const fetchAsBase64OrObjectUrl = async (imageUrl: string): Promise<string | null
   }
 };
 
+/**
+ * Compress a data URL image by reducing quality and resizing if needed
+ * Used to reduce upload size for Drive
+ */
+export const compressImageDataUrl = (dataUrl: string, maxWidth = 1600, quality = 0.7): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Failed to get canvas context'));
+        return;
+      }
+
+      // Calculate new dimensions
+      let width = img.width;
+      let height = img.height;
+      if (width > maxWidth) {
+        height = (maxWidth / width) * height;
+        width = maxWidth;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // Compress and return
+      const compressed = canvas.toDataURL('image/jpeg', quality);
+      console.log(`[COMPRESS] Original: ${dataUrl.length} bytes -> Compressed: ${compressed.length} bytes`);
+      resolve(compressed);
+    };
+    img.onerror = () => reject(new Error('Failed to load image for compression'));
+    img.src = dataUrl;
+  });
+};
+
 export const cropImageToSquare = (imageUrl: string): Promise<string> => {
   return new Promise(async (resolve, reject) => {
     const img = new Image();

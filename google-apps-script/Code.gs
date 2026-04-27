@@ -1445,33 +1445,52 @@ function handleUploadPhoto(data) {
       data.fileName || ('photo_' + Date.now() + '.jpg')
     );
     
-    // Upload to Drive with retry logic
+    // Upload to Drive with aggressive retry logic (up to 5 attempts with longer wait)
     let file = null;
     let lastError = null;
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    const maxAttempts = 5;
+    
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
+        Logger.log('[UPLOAD] Attempt ' + attempt + '/' + maxAttempts + ' for file: ' + data.fileName);
         file = targetFolder.createFile(blob);
+        Logger.log('[UPLOAD] SUCCESS on attempt ' + attempt);
         break; // Success
       } catch (err) {
         lastError = err;
-        if (attempt < 3) {
-          console.warn('Upload attempt ' + attempt + '/3 failed, retrying...: ' + err);
-          // Wait before retrying (exponential backoff)
-          Utilities.sleep(1000 * attempt);
+        const errorStr = err.toString();
+        Logger.log('[UPLOAD] Attempt ' + attempt + ' FAILED: ' + errorStr);
+        
+        if (attempt < maxAttempts) {
+          // Exponential backoff with longer waits: 2s, 4s, 8s, 16s
+          const waitTime = 2000 * Math.pow(2, attempt - 1);
+          Logger.log('[UPLOAD] Waiting ' + waitTime + 'ms before retry...');
+          Utilities.sleep(waitTime);
+        } else {
+          Logger.log('[UPLOAD] All ' + maxAttempts + ' attempts exhausted');
         }
       }
     }
     
     if (!file) {
-      return { success: false, error: 'Failed to upload after 3 attempts: ' + lastError };
+      const errorMsg = 'Failed to upload after ' + maxAttempts + ' attempts: ' + lastError;
+      Logger.log('[UPLOAD] ' + errorMsg);
+      return { success: false, error: errorMsg };
     }
     
     // Make file accessible via link
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch (shareErr) {
+      Logger.log('[UPLOAD] Warning: Could not set sharing: ' + shareErr);
+      // Continue anyway, file was uploaded successfully
+    }
     
     var fileId = file.getId();
     var viewUrl = 'https://drive.google.com/file/d/' + fileId + '/view';
     var directUrl = 'https://lh3.googleusercontent.com/d/' + fileId;
+    
+    Logger.log('[UPLOAD] File uploaded successfully - ID: ' + fileId);
     
     return {
       success: true,
@@ -1481,6 +1500,7 @@ function handleUploadPhoto(data) {
       fileName: file.getName()
     };
   } catch (error) {
+    Logger.log('[UPLOAD] Outer catch - error: ' + error.toString());
     return { success: false, error: error.toString() };
   }
 }

@@ -801,9 +801,45 @@ const CreateKlipingScreen: React.FC = () => {
             const extra = raw
               ? `\n\nDetail: ${raw.message || ''} ${raw.code ? `(Code: ${raw.code})` : ''} ${raw.status ? `(HTTP: ${raw.status})` : ''}`
               : '';
-            alert(`Gagal menyimpan data: ${result.error}${extra}\n\nCoba ulang ya. Kalau pakai foto besar, coba ambil ulang/foto lebih kecil atau pakai jaringan yang stabil.`);
-            setSaving(false);
-            return;
+            const errorMsg = `Gagal menyimpan data: ${result.error}${extra}`;
+            
+            // Check if it's a Drive upload error
+            if (result.error?.includes('Drive') || result.error?.includes('Failed uploads')) {
+              // For Drive errors, ask user if they want to retry or skip photos
+              const shouldRetry = confirm(
+                `${errorMsg}\n\n` +
+                `Tombol "OK" untuk retry upload (tunggu lebih lama)\n` +
+                `Tombol "Cancel" untuk skip foto dan lanjut simpan record\n\n` +
+                `Tips: Coba dengan foto lebih kecil atau jaringan yang stabil.`
+              );
+              
+              if (!shouldRetry) {
+                // User chose to skip - retry without photos
+                console.log('User chose to skip photos, retrying without photos...');
+                const recordWithoutPhotos: any = { ...record };
+                ['foto_etiket', 'foto_banded', 'foto_karton', 'foto_label_etiket',
+                 'foto_label_bumbu', 'foto_label_minyak_bumbu', 'foto_label_si', 'foto_label_opp_banded']
+                  .forEach(field => { recordWithoutPhotos[field] = null; });
+                
+                const retryResult = await insertKlipingRecord(recordWithoutPhotos as KlipingRecord, true);
+                if (!retryResult.success) {
+                  alert(`Tetap gagal: ${retryResult.error}\n\nCoba refresh halaman dan ulangi.`);
+                  setSaving(false);
+                  return;
+                }
+                console.log(`Successfully inserted mesin ${mesin} (without photos)`);
+              } else {
+                // User chose retry - stop here and let them retry
+                alert(`${errorMsg}\n\nCoba ulang ya. Tunggu beberapa detik sebelum menyimpan lagi.`);
+                setSaving(false);
+                return;
+              }
+            } else {
+              // Non-Drive error
+              alert(`${errorMsg}\n\nCoba ulang ya.`);
+              setSaving(false);
+              return;
+            }
           }
 
           console.log(`Successfully inserted mesin ${mesin}`);

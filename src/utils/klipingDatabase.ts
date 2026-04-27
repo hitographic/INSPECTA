@@ -1,5 +1,6 @@
 import { gGet, gPost, uploadPhotoFromDataUrl, getDriveDirectUrl, normalizeDate, normalizeDatesInRecords } from './googleApi';
 import { logDelete } from './auditLog';
+import { compressImageDataUrl } from './imageUtils';
 import { KlipingRecord } from '../types/database';
 
 export const insertKlipingRecord = async (
@@ -19,32 +20,53 @@ export const insertKlipingRecord = async (
       if (val && typeof val === 'string' && val.startsWith('data:image')) {
         const fileName = `${field}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.jpg`;
         
-        // Retry upload up to 3 times with exponential backoff
+        // Compress image first to reduce upload size
+        let compressedVal = val;
+        try {
+          console.log(`[KLIPING] Compressing ${field}...`);
+          compressedVal = await compressImageDataUrl(val, 1600, 0.7);
+          console.log(`[KLIPING] Compressed ${field}`);
+        } catch (compressErr) {
+          console.warn(`[KLIPING] Failed to compress ${field}, using original:`, compressErr);
+          // Continue with original if compression fails
+        }
+        
+        // Retry upload up to 5 times with exponential backoff
         let uploadResult = null;
         let lastError = null;
-        for (let attempt = 1; attempt <= 3; attempt++) {
+        const maxAttempts = 5;
+        
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
           try {
-            uploadResult = await uploadPhotoFromDataUrl(val, fileName, 'kliping');
+            console.log(`[KLIPING] Upload attempt ${attempt}/${maxAttempts} for ${field}...`);
+            uploadResult = await uploadPhotoFromDataUrl(compressedVal, fileName, 'kliping');
+            
             if (uploadResult.success && uploadResult.directUrl) {
               recordData[field] = uploadResult.directUrl;
+              console.log(`[KLIPING] ✅ Upload success for ${field} on attempt ${attempt}`);
               break; // Success, exit retry loop
-            } else if (attempt < 3) {
+            } else if (attempt < maxAttempts) {
               // Failed, will retry
               lastError = uploadResult.error;
-              console.warn(`[KLIPING] Upload attempt ${attempt}/3 for ${field} failed: ${uploadResult.error}, retrying...`);
-              // Wait before retrying (exponential backoff: 1s, 2s)
-              await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+              console.warn(`[KLIPING] ❌ Upload attempt ${attempt}/${maxAttempts} for ${field} failed: ${uploadResult.error}, retrying...`);
+              // Wait before retrying (exponential backoff: 2s, 4s, 8s, 16s, 32s)
+              const waitTime = 2000 * Math.pow(2, attempt - 1);
+              console.log(`[KLIPING] Waiting ${waitTime}ms before retry...`);
+              await new Promise(resolve => setTimeout(resolve, waitTime));
             } else {
               // Last attempt failed
               lastError = uploadResult.error;
-              console.error(`[KLIPING] All 3 upload attempts failed for ${field}: ${uploadResult.error}`);
+              console.error(`[KLIPING] ❌ All ${maxAttempts} upload attempts failed for ${field}: ${uploadResult.error}`);
             }
           } catch (err) {
-            if (attempt < 3) {
-              console.warn(`[KLIPING] Upload attempt ${attempt}/3 for ${field} threw error, retrying...`, err);
-              await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            lastError = err;
+            if (attempt < maxAttempts) {
+              console.warn(`[KLIPING] ⚠️ Upload attempt ${attempt}/${maxAttempts} for ${field} threw error, retrying...`, err);
+              const waitTime = 2000 * Math.pow(2, attempt - 1);
+              console.log(`[KLIPING] Waiting ${waitTime}ms before retry...`);
+              await new Promise(resolve => setTimeout(resolve, waitTime));
             } else {
-              lastError = err;
+              console.error(`[KLIPING] ❌ All ${maxAttempts} attempts failed with exception for ${field}:`, err);
             }
           }
         }
@@ -54,6 +76,11 @@ export const insertKlipingRecord = async (
           recordData[field] = '';
         }
       }
+    }
+
+    // If we have failed uploads but some succeeded, log warning but continue
+    if (failedUploads.length > 0) {
+      console.warn('[KLIPING] ⚠️ Some photo uploads failed:', failedUploads);
     }
 
     const result = await gPost('insertKlipingRecord', recordData);
