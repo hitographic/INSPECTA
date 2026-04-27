@@ -65,6 +65,7 @@ const CreateKlipingScreen: React.FC = () => {
   const [originalPengamatanKeys, setOriginalPengamatanKeys] = useState<Set<string>>(new Set());
 
   const [saving, setSaving] = useState(false);
+  const [savingProgress, setSavingProgress] = useState('');
   const [loadingEdit, setLoadingEdit] = useState(false);
 
   const [cameraVisible, setCameraVisible] = useState(false);
@@ -1640,8 +1641,115 @@ const CreateKlipingScreen: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Loading Modal */}
+      {saving && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            backdropFilter: 'blur(4px)'
+          }}
+        >
+          <div
+            style={{
+              background: 'white',
+              borderRadius: '20px',
+              padding: '40px',
+              textAlign: 'center',
+              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+              maxWidth: '400px',
+              animation: 'fadeIn 0.3s ease-in'
+            }}
+          >
+            {/* Animated Spinner */}
+            <div
+              style={{
+                width: '60px',
+                height: '60px',
+                margin: '0 auto 24px',
+                border: '4px solid #f0f0f0',
+                borderTop: '4px solid #10b981',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite'
+              }}
+            />
+
+            <h2
+              style={{
+                fontSize: '20px',
+                fontWeight: '700',
+                color: '#1f2937',
+                margin: '0 0 12px'
+              }}
+            >
+              📸 Sedang Mengunggah Foto
+            </h2>
+
+            <p
+              style={{
+                fontSize: '14px',
+                color: '#6b7280',
+                margin: '0 0 8px',
+                lineHeight: '1.6'
+              }}
+            >
+              Foto sedang diupload ke server. Mohon tunggu sebentar...
+            </p>
+
+            {savingProgress && (
+              <p
+                style={{
+                  fontSize: '13px',
+                  color: '#10b981',
+                  margin: '12px 0 0',
+                  fontWeight: '500',
+                  padding: '8px 12px',
+                  background: '#f0fdf4',
+                  borderRadius: '8px'
+                }}
+              >
+                {savingProgress}
+              </p>
+            )}
+
+            <p
+              style={{
+                fontSize: '12px',
+                color: '#9ca3af',
+                margin: '12px 0 0',
+                fontStyle: 'italic'
+              }}
+            >
+              ⏱️ Proses ini bisa memakan waktu beberapa menit tergantung ukuran foto dan koneksi internet
+            </p>
+
+            {/* CSS Animation */}
+            <style>
+              {`
+                @keyframes spin {
+                  to { transform: rotate(360deg); }
+                }
+                @keyframes fadeIn {
+                  from { opacity: 0; }
+                  to { opacity: 1; }
+                }
+              `}
+            </style>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 export default CreateKlipingScreen;
+
