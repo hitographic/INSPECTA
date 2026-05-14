@@ -51,17 +51,33 @@ export const getAreaDisplayOrder = async (areaName: string): Promise<number> => 
 export const sortAreasByDisplayOrder = async (areaNames: string[]): Promise<string[]> => {
   try {
     console.log('sortAreasByDisplayOrder called with:', areaNames);
-    const areas = await gGet('getAreas');
-    if (!areas || areas.length === 0) {
-      console.log('No areas found, returning original order');
-      return areaNames;
-    }
-    const sorted = areas
-      .filter((a: any) => areaNames.includes(a.name))
-      .sort((a: any, b: any) => Number(a.display_order) - Number(b.display_order))
-      .map((a: any) => a.name);
+    
+    // Import AREAS constant for correct area ordering
+    const { AREAS } = await import('../constants/AppConstants');
+    
+    // Sort areas based on AREAS constant order
+    // Areas not in constant will be placed at the end in alphabetical order
+    const sorted = areaNames.sort((a, b) => {
+      const indexA = AREAS.indexOf(a);
+      const indexB = AREAS.indexOf(b);
+      
+      // Both in AREAS constant
+      if (indexA !== -1 && indexB !== -1) {
+        return indexA - indexB;
+      }
+      
+      // A is in AREAS, B is not - A comes first
+      if (indexA !== -1) return -1;
+      
+      // B is in AREAS, A is not - B comes first
+      if (indexB !== -1) return 1;
+      
+      // Neither in AREAS - sort alphabetically
+      return a.localeCompare(b);
+    });
+    
     console.log('sortAreasByDisplayOrder returning:', sorted);
-    return sorted.length > 0 ? sorted : areaNames;
+    return sorted;
   } catch (error) {
     console.error('Error sorting areas:', error);
     return areaNames;

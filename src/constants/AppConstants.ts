@@ -6,9 +6,11 @@ export const PLANTS = {
 
 export const AREAS = [
   'Silo',
+  'Alkali Ingredient',
   'Mixer',
   'Roll Press',
   'Steambox',
+  'Cutter',
   'Cutter dan Folder',
   'Fryer',
   'Cooling Box',
@@ -19,6 +21,13 @@ export const BAGIAN_BY_AREA: { [key: string]: string[] } = {
   'Silo': [
     'Sievter Silo',
     'Pembersihan selongsong sieveter silo'
+  ],
+  'Alkali Ingredient': [
+    'Tangki Penyimpanan',
+    'Pipa Distribusi',
+    'Pompa',
+    'Meter Aliran',
+    'Saringan Alkali'
   ],
   'Mixer': [
     'Bagian dalam mixer',
@@ -46,6 +55,11 @@ export const BAGIAN_BY_AREA: { [key: string]: string[] } = {
     'Bagian dalam steambox',
     'Bodi steambox keseluruhan',
     'Lantai bawah steambox'
+  ],
+  'Cutter': [
+    'Cutter',
+    'Palet/net distributor',
+    'Bagian bawah roll cutter folder'
   ],
   'Cutter dan Folder': [
     'Cutter',
@@ -81,6 +95,13 @@ export const KETERANGAN_TEMPLATES: { [key: string]: string } = {
   // Silo
   'Sievter Silo': 'Pembersihan sievter dari sisa tepung terigu',
   'Pembersihan selongsong sieveter silo': 'Pembersihan selongsong sievter dari sisa tepung terigu',
+
+  // Alkali Ingredient
+  'Tangki Penyimpanan': 'Pembersihan tangki penyimpanan bahan alkali',
+  'Pipa Distribusi': 'Pembersihan pipa distribusi alkali dari sisa bahan kimia',
+  'Pompa': 'Pemeriksaan dan pembersihan pompa alkali',
+  'Meter Aliran': 'Pembersihan meter aliran alkali',
+  'Saringan Alkali': 'Pembersihan dan penggantian saringan alkali',
 
   // Mixer
   'Bagian dalam mixer': 'Wet cleaning menggunakan Vosen Divertig',
